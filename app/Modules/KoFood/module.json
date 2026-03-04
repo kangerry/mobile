@@ -1,0 +1,11 @@
+{
+    "name": "KoFood",
+    "alias": "kofood",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\KoFood\\Providers\\KoFoodServiceProvider"
+    ],
+    "files": []
+}

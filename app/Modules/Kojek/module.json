@@ -1,0 +1,11 @@
+{
+    "name": "Kojek",
+    "alias": "kojek",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Kojek\\Providers\\KojekServiceProvider"
+    ],
+    "files": []
+}

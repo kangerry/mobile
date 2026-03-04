@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/kojek",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Kojek\\": "app/",
+            "Modules\\Kojek\\Database\\Factories\\": "database/factories/",
+            "Modules\\Kojek\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Kojek\\Tests\\": "tests/"
+        }
+    }
+}

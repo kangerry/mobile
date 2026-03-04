@@ -1,0 +1,11 @@
+{
+    "name": "Dompet",
+    "alias": "dompet",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Dompet\\Providers\\DompetServiceProvider"
+    ],
+    "files": []
+}

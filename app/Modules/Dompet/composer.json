@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/dompet",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Dompet\\": "app/",
+            "Modules\\Dompet\\Database\\Factories\\": "database/factories/",
+            "Modules\\Dompet\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Dompet\\Tests\\": "tests/"
+        }
+    }
+}

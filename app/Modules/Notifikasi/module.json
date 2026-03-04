@@ -1,0 +1,11 @@
+{
+    "name": "Notifikasi",
+    "alias": "notifikasi",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Notifikasi\\Providers\\NotifikasiServiceProvider"
+    ],
+    "files": []
+}
