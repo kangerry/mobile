@@ -13,7 +13,17 @@
       <tr>
         <td>
           @if(!empty($i->gambar))
-          <img src="{{ asset('storage/'.ltrim($i->gambar, '/')) }}" style="height:48px;border-radius:6px;border:1px solid #e5e7eb;">
+          @php
+            $g = trim($i->gambar ?? '');
+            if (str_starts_with($g, 'http://') || str_starts_with($g, 'https://')) {
+              $src = $g;
+            } elseif (str_starts_with($g, 'storage/')) {
+              $src = asset(ltrim($g, '/'));
+            } else {
+              $src = asset('storage/'.ltrim($g, '/'));
+            }
+          @endphp
+          <img src="{{ $src }}" alt="Gambar kategori" style="height:48px;border-radius:6px;border:1px solid #e5e7eb;">
           @else
           <span class="muted">-</span>
           @endif

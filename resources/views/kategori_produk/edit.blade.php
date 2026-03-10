@@ -25,7 +25,17 @@
       <input type="file" accept="image/*" name="gambar" style="display:block;margin-top:6px;">
       @if(!empty($row->gambar))
         <div style="margin-top:8px;">
-          <img src="{{ asset('storage/'.ltrim($row->gambar, '/')) }}" alt="Gambar kategori" style="height:72px;border-radius:8px;border:1px solid #e5e7eb;">
+          @php
+            $g = trim($row->gambar ?? '');
+            if (str_starts_with($g, 'http://') || str_starts_with($g, 'https://')) {
+              $src = $g;
+            } elseif (str_starts_with($g, 'storage/')) {
+              $src = asset(ltrim($g, '/'));
+            } else {
+              $src = asset('storage/'.ltrim($g, '/'));
+            }
+          @endphp
+          <img src="{{ $src }}" alt="Gambar kategori" style="height:72px;border-radius:8px;border:1px solid #e5e7eb;">
         </div>
       @endif
     </div>
