@@ -15,9 +15,9 @@
           @if(!empty($i->gambar))
           @php
             $g = trim($i->gambar ?? '');
-            if (str_starts_with($g, 'http://') || str_starts_with($g, 'https://')) {
+            if (\Illuminate\Support\Str::startsWith($g, ['http://', 'https://'])) {
               $src = $g;
-            } elseif (str_starts_with($g, 'storage/')) {
+            } elseif (\Illuminate\Support\Str::startsWith($g, 'storage/')) {
               $src = asset(ltrim($g, '/'));
             } else {
               $src = asset('storage/'.ltrim($g, '/'));
