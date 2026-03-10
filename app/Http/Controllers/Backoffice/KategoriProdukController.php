@@ -12,17 +12,26 @@ class KategoriProdukController extends BaseController
 {
     public function index()
     {
-        $query = DB::table('kategori_produk')
-            ->join('koperasi', 'kategori_produk.koperasi_id', '=', 'koperasi.id')
-            ->select('kategori_produk.*', 'koperasi.nama_koperasi')
-            ->orderBy('nama_kategori');
-        $user = Auth::user();
-        if ($user && ! $user->hasRole('superadmin')) {
-            $query->where('kategori_produk.koperasi_id', $user->koperasi_id);
-        }
-        $items = $query->get();
+        try {
+            $query = DB::table('kategori_produk')
+                ->join('koperasi', 'kategori_produk.koperasi_id', '=', 'koperasi.id')
+                ->select('kategori_produk.*', 'koperasi.nama_koperasi')
+                ->orderBy('nama_kategori');
+            $user = Auth::user();
+            if ($user && ! $user->hasRole('superadmin')) {
+                $query->where('kategori_produk.koperasi_id', $user->koperasi_id);
+            }
+            $items = $query->get();
 
-        return view('kategori_produk.index', compact('items'));
+            return view('kategori_produk.index', compact('items'));
+        } catch (\Throwable $e) {
+            \Log::error('kategori-produk index error: '.$e->getMessage(), [
+                'code' => $e->getCode(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            abort(500);
+        }
     }
 
     public function create()
