@@ -10,6 +10,22 @@ use Illuminate\Support\Facades\Storage;
 
 class KategoriProdukController extends BaseController
 {
+    private function isSuperAdmin($user): bool
+    {
+        try {
+            if (! $user) {
+                return false;
+            }
+            if (method_exists($user, 'hasRole')) {
+                return (bool) $user->hasRole('superadmin');
+            }
+            return false;
+        } catch (\Throwable $e) {
+            \Log::warning('hasRole check failed: '.$e->getMessage());
+            return false;
+        }
+    }
+
     public function index()
     {
         try {
@@ -18,7 +34,7 @@ class KategoriProdukController extends BaseController
                 ->select('kategori_produk.*', 'koperasi.nama_koperasi')
                 ->orderBy('nama_kategori');
             $user = Auth::user();
-            if ($user && ! $user->hasRole('superadmin')) {
+            if ($user && ! $this->isSuperAdmin($user)) {
                 $query->where('kategori_produk.koperasi_id', $user->koperasi_id);
             }
             $items = $query->get();
@@ -46,7 +62,7 @@ class KategoriProdukController extends BaseController
     {
         $user = Auth::user();
         $kopQuery = DB::table('koperasi')->select('id', 'nama_koperasi')->orderBy('nama_koperasi');
-        if ($user && ! $user->hasRole('superadmin')) {
+        if ($user && ! $this->isSuperAdmin($user)) {
             $kopQuery->where('id', $user->koperasi_id);
         }
         $koperasis = $kopQuery->get();
@@ -62,7 +78,7 @@ class KategoriProdukController extends BaseController
             'gambar' => 'nullable|image|mimes:jpeg,png,webp,avif|max:2048',
         ]);
         $user = Auth::user();
-        $koperasiId = ($user && $user->hasRole('superadmin')) ? (int) $validated['koperasi_id'] : (int) ($user->koperasi_id ?? $validated['koperasi_id']);
+        $koperasiId = ($user && $this->isSuperAdmin($user)) ? (int) $validated['koperasi_id'] : (int) ($user->koperasi_id ?? $validated['koperasi_id']);
         $path = null;
         if ($request->hasFile('gambar')) {
             $file = $request->file('gambar');
@@ -86,7 +102,7 @@ class KategoriProdukController extends BaseController
         $row = DB::table('kategori_produk')->where('id', $id)->first();
         $user = Auth::user();
         $kopQuery = DB::table('koperasi')->select('id', 'nama_koperasi')->orderBy('nama_koperasi');
-        if ($user && ! $user->hasRole('superadmin')) {
+        if ($user && ! $this->isSuperAdmin($user)) {
             $kopQuery->where('id', $user->koperasi_id);
         }
         $koperasis = $kopQuery->get();
@@ -102,7 +118,7 @@ class KategoriProdukController extends BaseController
             'gambar' => 'nullable|image|mimes:jpeg,png,webp,avif|max:2048',
         ]);
         $user = Auth::user();
-        $koperasiId = ($user && $user->hasRole('superadmin')) ? (int) $validated['koperasi_id'] : (int) ($user->koperasi_id ?? $validated['koperasi_id']);
+        $koperasiId = ($user && $this->isSuperAdmin($user)) ? (int) $validated['koperasi_id'] : (int) ($user->koperasi_id ?? $validated['koperasi_id']);
         $update = [
             'koperasi_id' => $koperasiId,
             'nama_kategori' => $validated['nama_kategori'],
