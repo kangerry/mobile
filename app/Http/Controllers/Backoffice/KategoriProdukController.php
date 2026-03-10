@@ -48,7 +48,10 @@ class KategoriProdukController extends BaseController
         $koperasiId = ($user && $user->hasRole('superadmin')) ? (int) $validated['koperasi_id'] : (int) ($user->koperasi_id ?? $validated['koperasi_id']);
         $path = null;
         if ($request->hasFile('gambar')) {
-            $path = $request->file('gambar')?->store('kategori', 'public');
+            $file = $request->file('gambar');
+            if ($file) {
+                $path = $file->store('kategori', 'public');
+            }
         }
         DB::table('kategori_produk')->insert([
             'koperasi_id' => $koperasiId,
@@ -90,7 +93,8 @@ class KategoriProdukController extends BaseController
         ];
         if ($request->hasFile('gambar')) {
             $row = DB::table('kategori_produk')->where('id', $id)->first();
-            $newPath = $request->file('gambar')?->store('kategori', 'public');
+            $f = $request->file('gambar');
+            $newPath = $f ? $f->store('kategori', 'public') : null;
             if ($row && isset($row->gambar) && $row->gambar && Storage::disk('public')->exists($row->gambar)) {
                 try { Storage::disk('public')->delete($row->gambar); } catch (\Throwable $e) {}
             }

@@ -411,10 +411,9 @@ class AuthApiController extends Controller
 
     public function logout(Request $request)
     {
-        $token = $request->user()?->currentAccessToken();
-        if ($token) {
-            $token->delete();
-        }
+        $user = $request->user();
+        $token = $user ? $user->currentAccessToken() : null;
+        if ($token) { $token->delete(); }
 
         return response()->json(['message' => 'Logged out']);
     }

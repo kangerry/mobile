@@ -154,10 +154,11 @@ class KoFoodController extends BaseController
         }
         // Notify seller (merchant owner)
         try {
-            if (! empty($merchantRow?->anggota_id)) {
+            $merchantOwnerId = ($merchantRow && isset($merchantRow->anggota_id)) ? (int) $merchantRow->anggota_id : null;
+            if (! empty($merchantOwnerId)) {
                 // FCM tokens
                 $fcmTokens = DB::table('anggota_device_tokens')
-                    ->where('anggota_id', (int) $merchantRow->anggota_id)
+                    ->where('anggota_id', $merchantOwnerId)
                     ->where(function ($q) {
                         $q->whereNull('platform')->orWhere('platform', '!=', 'onesignal');
                     })
@@ -168,7 +169,7 @@ class KoFoodController extends BaseController
                     ->all();
                 // OneSignal Player IDs
                 $oneSignalIds = DB::table('anggota_device_tokens')
-                    ->where('anggota_id', (int) $merchantRow->anggota_id)
+                    ->where('anggota_id', $merchantOwnerId)
                     ->where('platform', 'onesignal')
                     ->pluck('token')
                     ->filter()
@@ -610,8 +611,8 @@ class KoFoodController extends BaseController
             'lng' => (float) ($order->longitude_tujuan ?? 0),
         ];
         $driverPos = [
-            'lat' => (float) ($driver?->latitude_terakhir ?? $origin['lat']),
-            'lng' => (float) ($driver?->longitude_terakhir ?? $origin['lng']),
+            'lat' => (float) ($driver && isset($driver->latitude_terakhir) ? $driver->latitude_terakhir : $origin['lat']),
+            'lng' => (float) ($driver && isset($driver->longitude_terakhir) ? $driver->longitude_terakhir : $origin['lng']),
         ];
         $haversine = function ($aLat, $aLng, $bLat, $bLng) {
             $earth = 6371.0;
@@ -661,8 +662,8 @@ class KoFoodController extends BaseController
                 'driver' => [
                     'lat' => $driverPos['lat'],
                     'lng' => $driverPos['lng'],
-                    'name' => $driver?->nama_driver ?? 'Driver',
-                    'plate' => $driver?->plat_nomor ?? '',
+                    'name' => $driver && isset($driver->nama_driver) ? $driver->nama_driver : 'Driver',
+                    'plate' => $driver && isset($driver->plat_nomor) ? $driver->plat_nomor : '',
                 ],
                 'eta_minutes' => $etaMinutes,
                 'updated_at' => now()->toIso8601String(),

@@ -61,7 +61,10 @@ class MerchantController extends BaseController
         $koperasiId = ($user && $user->hasRole('superadmin')) ? (int) $v['koperasi_id'] : (int) ($user->koperasi_id ?? $v['koperasi_id']);
         $bannerPath = null;
         if ($request->hasFile('banner')) {
-            $bannerPath = $request->file('banner')?->store('merchant/banner', 'public');
+            $file = $request->file('banner');
+            if ($file) {
+                $bannerPath = $file->store('merchant/banner', 'public');
+            }
         }
         DB::table('merchant')->insert([
             'koperasi_id' => $koperasiId,
@@ -142,7 +145,8 @@ class MerchantController extends BaseController
         ];
         if ($request->hasFile('banner')) {
             $row = DB::table('merchant')->where('id', $id)->first();
-            $newPath = $request->file('banner')?->store('merchant/banner', 'public');
+            $f = $request->file('banner');
+            $newPath = $f ? $f->store('merchant/banner', 'public') : null;
             if ($row && isset($row->banner) && $row->banner && Storage::disk('public')->exists($row->banner)) {
                 try { Storage::disk('public')->delete($row->banner); } catch (\Throwable $e) {}
             }
