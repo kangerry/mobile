@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use App\Services\FcmService;
+use App\Services\OneSignalService;
 
 class DriverApiController extends Controller
 {
@@ -158,10 +160,16 @@ class DriverApiController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
         $kopId = (int) $request->attributes->get('koperasi_id');
-        $updated = DB::table('pesanan_makanan')
+        $order = DB::table('pesanan_makanan')
             ->where('koperasi_id', $kopId)
             ->where('id', (int) $id)
             ->whereNull('driver_id')
+            ->first();
+        if (! $order) {
+            return response()->json(['message' => 'Order tidak tersedia'], 409);
+        }
+        $updated = DB::table('pesanan_makanan')
+            ->where('id', (int) $order->id)
             ->update([
                 'driver_id' => $user->id,
                 'status' => 'dikirim',
@@ -169,6 +177,74 @@ class DriverApiController extends Controller
             ]);
         if ($updated === 0) {
             return response()->json(['message' => 'Order tidak tersedia'], 409);
+        }
+
+        // Kirim notifikasi ke anggota (pemesan) dan pemilik merchant
+        try {
+            $merchant = DB::table('merchant')->where('id', $order->merchant_id)->first();
+            $driver = DB::table('driver')->where('id', $user->id)->first();
+            // Anggota pemesan
+            $anggotaFcm = DB::table('anggota_device_tokens')
+                ->where('anggota_id', (int) $order->anggota_id)
+                ->where(function ($q) {
+                    $q->whereNull('platform')->orWhere('platform', '!=', 'onesignal');
+                })
+                ->pluck('token')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+            $anggotaOs = DB::table('anggota_device_tokens')
+                ->where('anggota_id', (int) $order->anggota_id)
+                ->where('platform', 'onesignal')
+                ->pluck('token')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+            // Pemilik merchant (anggota_id pada merchant)
+            $sellerFcm = [];
+            $sellerOs = [];
+            if ($merchant && ! empty($merchant->anggota_id)) {
+                $sellerFcm = DB::table('anggota_device_tokens')
+                    ->where('anggota_id', (int) $merchant->anggota_id)
+                    ->where(function ($q) {
+                        $q->whereNull('platform')->orWhere('platform', '!=', 'onesignal');
+                    })
+                    ->pluck('token')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+                $sellerOs = DB::table('anggota_device_tokens')
+                    ->where('anggota_id', (int) $merchant->anggota_id)
+                    ->where('platform', 'onesignal')
+                    ->pluck('token')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+            }
+            $fcmTokens = array_values(array_unique(array_merge($anggotaFcm, $sellerFcm)));
+            $oneSignalIds = array_values(array_unique(array_merge($anggotaOs, $sellerOs)));
+            if (! empty($fcmTokens) || ! empty($oneSignalIds)) {
+                $title = 'Driver Menerima Pesanan';
+                $body = ($order->nomor_pesanan ? ('Pesanan '.$order->nomor_pesanan.' ') : 'Pesanan ')
+                    .'akan diantar oleh '.(($driver->nama_driver ?? 'Driver'));
+                $data = [
+                    'type' => 'kofood_driver_accepted',
+                    'order_id' => (string) $order->id,
+                    'number' => (string) ($order->nomor_pesanan ?? ''),
+                ];
+                if (! empty($fcmTokens)) {
+                    (new FcmService)->sendToTokens($fcmTokens, $title, $body, $data);
+                }
+                if (! empty($oneSignalIds)) {
+                    (new OneSignalService)->sendToPlayerIds($oneSignalIds, $title, $body, $data);
+                }
+            }
+        } catch (\Throwable $e) {
+            // abaikan error notifikasi
         }
 
         return response()->json(['message' => 'OK']);

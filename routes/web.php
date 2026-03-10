@@ -18,9 +18,12 @@ use App\Http\Controllers\Backoffice\ProdukController;
 use App\Http\Controllers\Backoffice\SetupGatewayController;
 use App\Http\Controllers\Backoffice\TarifDeliveryTokoController;
 use App\Http\Controllers\Backoffice\TarifKojekController;
+use App\Http\Controllers\Backoffice\UserController as BackofficeUserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Backoffice\AccessRoleController;
+use App\Http\Controllers\Backoffice\AccessPermissionController;
 
 Route::redirect('/', '/login');
 
@@ -106,11 +109,21 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('produk', ProdukController::class);
     Route::resource('kategori-produk', \App\Http\Controllers\Backoffice\KategoriProdukController::class);
     Route::resource('pesanan-makanan', PesananMakananController::class);
+    Route::get('pesanan-makanan/delivery-board', [PesananMakananController::class, 'deliveryBoard'])->name('pesanan-makanan.delivery-board');
+    Route::post('pesanan-makanan/{id}/assign-driver', [PesananMakananController::class, 'assignDriver'])->name('pesanan-makanan.assign-driver');
+    Route::post('pesanan-makanan/{id}/complete', [PesananMakananController::class, 'completeDelivery'])->name('pesanan-makanan.complete');
     Route::resource('driver', DriverController::class);
+    Route::get('driver/monitoring', [DriverController::class, 'monitoring'])->name('driver.monitoring');
+    Route::get('driver/positions', [DriverController::class, 'positions'])->name('driver.positions');
     Route::resource('pesanan-ojek', PesananOjekController::class);
     Route::resource('setup-gateway', SetupGatewayController::class);
     Route::resource('tarif-kojek', TarifKojekController::class);
     Route::resource('tarif-delivery-toko', TarifDeliveryTokoController::class);
     Route::get('gateway-logs', [GatewayLogController::class, 'index'])->name('gateway-logs.index');
     Route::get('gateway-logs/export', [GatewayLogController::class, 'export'])->name('gateway-logs.export');
+    Route::resource('users', BackofficeUserController::class);
+    Route::resource('access-roles', AccessRoleController::class)->except(['show']);
+    Route::get('permissions', [AccessPermissionController::class, 'index'])->name('permissions.index');
+    Route::post('permissions', [AccessPermissionController::class, 'store'])->name('permissions.store');
+    Route::delete('permissions/{id}', [AccessPermissionController::class, 'destroy'])->name('permissions.destroy');
 });

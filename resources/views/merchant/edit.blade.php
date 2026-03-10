@@ -3,7 +3,7 @@
 @section('content')
 <div class="card">
   <div class="card-title" style="margin-bottom:12px;">Edit Merchant</div>
-  <form method="POST" action="{{ route('merchant.update', $row->id ?? 0) }}">@csrf @method('PUT')
+  <form method="POST" action="{{ route('merchant.update', $row->id ?? 0) }}" enctype="multipart/form-data">@csrf @method('PUT')
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div>
         <label>Koperasi</label>
@@ -38,6 +38,15 @@
           <option value="pending" @selected(($row->status ?? '') === 'pending')>Pending</option>
           <option value="nonaktif" @selected(($row->status ?? '') === 'nonaktif')>Nonaktif</option>
         </select>
+      </div>
+      <div style="grid-column:1/-1;">
+        <label>Banner Toko (opsional)</label>
+        <input type="file" name="banner" accept="image/*" style="display:block;margin-top:6px;">
+        @if(!empty($row->banner))
+          <div style="margin-top:8px;">
+            <img src="{{ asset('storage/'.ltrim($row->banner, '/')) }}" alt="Banner" style="width:100%;max-width:480px;border-radius:8px;border:1px solid #e5e7eb;">
+          </div>
+        @endif
       </div>
     </div>
     <div style="margin-top:12px;"><button class="btn-brand">Simpan</button></div>

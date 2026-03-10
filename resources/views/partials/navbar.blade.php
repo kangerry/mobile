@@ -4,6 +4,7 @@
         <div style="font-weight:600; color:#fff;">{{ $title ?? 'Backoffice' }}</div>
     </div>
     <div style="display:flex; align-items:center; gap:12px;">
+        @include('components.theme-switcher')
         @php
             $user = auth()->user();
             $activeKopId = session('active_koperasi_id');

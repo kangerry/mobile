@@ -55,6 +55,34 @@ body { background: var(--brand-light); }
   box-shadow: 0 6px 16px rgba(0,0,0,.06);
   border-left: 4px solid #1e88e5;
 }
+.sidebar .menu .group-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 8px 0 4px 0;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  border-radius: 8px;
+  color: #0f3a69;
+  cursor: pointer;
+}
+.sidebar .menu .group-toggle .caret {
+  transition: transform .2s ease;
+}
+.sidebar .menu .group-toggle.collapsed .caret {
+  transform: rotate(-90deg);
+}
+.sidebar .menu .group-menu {
+  margin: 4px 0 8px 0;
+  padding-left: 6px;
+  border-left: 2px solid #e5e7eb;
+}
+.sidebar .menu .group-menu.collapsed {
+  display: none;
+}
 .header {
   grid-area: header;
   height: 56px;

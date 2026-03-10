@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backoffice;
 
 use App\Notifications\AnggotaApprovedNotification;
 use App\Services\FcmService;
+use App\Services\OneSignalService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\Auth;
@@ -48,14 +49,31 @@ class ApprovalAnggotaController extends BaseController
         $anggota->notify(new AnggotaApprovedNotification);
 
         try {
-            $tokens = DB::table('anggota_device_tokens')->where('anggota_id', $id)->pluck('token')->all();
-            if (! empty($tokens)) {
+            $fcmTokens = DB::table('anggota_device_tokens')
+                ->where('anggota_id', $id)
+                ->where(function ($q) {
+                    $q->whereNull('platform')->orWhere('platform', '!=', 'onesignal');
+                })
+                ->pluck('token')
+                ->all();
+            $oneSignalIds = DB::table('anggota_device_tokens')
+                ->where('anggota_id', $id)
+                ->where('platform', 'onesignal')
+                ->pluck('token')
+                ->all();
+            $title = 'Keanggotaan Disetujui';
+            $body = 'Pengajuan Anda sebagai anggota koperasi telah disetujui.';
+            $data = ['type' => 'anggota_approved'];
+            if (! empty($fcmTokens)) {
                 app(FcmService::class)->sendToTokens(
-                    tokens: $tokens,
-                    title: 'Keanggotaan Disetujui',
-                    body: 'Pengajuan Anda sebagai anggota koperasi telah disetujui.',
-                    data: ['type' => 'anggota_approved']
+                    tokens: $fcmTokens,
+                    title: $title,
+                    body: $body,
+                    data: $data
                 );
+            }
+            if (! empty($oneSignalIds)) {
+                app(OneSignalService::class)->sendToPlayerIds($oneSignalIds, $title, $body, $data);
             }
         } catch (\Throwable $e) {
             // ignore push errors

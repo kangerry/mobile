@@ -3,7 +3,7 @@
 @section('content')
 <div class="card">
   <div class="card-title" style="margin-bottom:12px;">Form Kategori Produk</div>
-  <form method="POST" action="{{ route('kategori-produk.store') }}">@csrf
+  <form method="POST" action="{{ route('kategori-produk.store') }}" enctype="multipart/form-data">@csrf
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div>
         <label>Koperasi</label>
@@ -19,6 +19,10 @@
         @endif
       </div>
       <div><label>Nama Kategori</label><input name="nama_kategori" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px"></div>
+    </div>
+    <div style="margin-top:12px;">
+      <label>Gambar Kategori (opsional)</label>
+      <input type="file" accept="image/*" name="gambar" style="display:block;margin-top:6px;">
     </div>
     <div style="margin-top:12px;"><button class="btn-brand">Simpan</button></div>
   </form>

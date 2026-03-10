@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class MerchantController extends BaseController
 {
@@ -54,9 +55,14 @@ class MerchantController extends BaseController
             'pirt' => 'nullable|string|max:50',
             'anggota_id' => 'nullable|exists:anggota,id',
             'status' => 'nullable|string|max:20',
+            'banner' => 'nullable|image|mimes:jpeg,png,webp,avif|max:4096',
         ]);
         $user = Auth::user();
         $koperasiId = ($user && $user->hasRole('superadmin')) ? (int) $v['koperasi_id'] : (int) ($user->koperasi_id ?? $v['koperasi_id']);
+        $bannerPath = null;
+        if ($request->hasFile('banner')) {
+            $bannerPath = $request->file('banner')?->store('merchant/banner', 'public');
+        }
         DB::table('merchant')->insert([
             'koperasi_id' => $koperasiId,
             'nama_toko' => $v['nama_toko'],
@@ -73,6 +79,7 @@ class MerchantController extends BaseController
             'pirt' => $v['pirt'] ?? null,
             'anggota_id' => $v['anggota_id'] ?? null,
             'status' => $v['status'] ?? 'aktif',
+            'banner' => $bannerPath,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -111,10 +118,11 @@ class MerchantController extends BaseController
             'pirt' => 'nullable|string|max:50',
             'anggota_id' => 'nullable|exists:anggota,id',
             'status' => 'nullable|string|max:20',
+            'banner' => 'nullable|image|mimes:jpeg,png,webp,avif|max:4096',
         ]);
         $user = Auth::user();
         $koperasiId = ($user && $user->hasRole('superadmin')) ? (int) $v['koperasi_id'] : (int) ($user->koperasi_id ?? $v['koperasi_id']);
-        DB::table('merchant')->where('id', $id)->update([
+        $update = [
             'koperasi_id' => $koperasiId,
             'nama_toko' => $v['nama_toko'],
             'deskripsi' => $v['deskripsi'] ?? null,
@@ -131,7 +139,16 @@ class MerchantController extends BaseController
             'anggota_id' => $v['anggota_id'] ?? null,
             'status' => $v['status'] ?? 'aktif',
             'updated_at' => now(),
-        ]);
+        ];
+        if ($request->hasFile('banner')) {
+            $row = DB::table('merchant')->where('id', $id)->first();
+            $newPath = $request->file('banner')?->store('merchant/banner', 'public');
+            if ($row && isset($row->banner) && $row->banner && Storage::disk('public')->exists($row->banner)) {
+                try { Storage::disk('public')->delete($row->banner); } catch (\Throwable $e) {}
+            }
+            $update['banner'] = $newPath;
+        }
+        DB::table('merchant')->where('id', $id)->update($update);
 
         return redirect()->route('merchant.index')->with('status', 'Data diperbarui');
     }

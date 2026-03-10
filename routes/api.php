@@ -81,6 +81,8 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
     Route::prefix('seller')->middleware(['auth:sanctum', TenantMiddleware::class])->group(function () {
         Route::post('products', [SellerProductController::class, 'store']);
         Route::post('products/{id}/photos', [SellerProductController::class, 'uploadPhoto']);
+        Route::get('orders', [KoFoodController::class, 'sellerOrders']);
+        Route::post('orders/{id}/process', [KoFoodController::class, 'processSellerOrder']);
     });
 
     Route::get('koperasi', [KoperasiController::class, 'index']);

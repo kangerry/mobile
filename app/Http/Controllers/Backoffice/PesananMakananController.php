@@ -136,4 +136,62 @@ class PesananMakananController extends BaseController
     {
         return redirect()->route('pesanan-makanan.edit', $id);
     }
+
+    public function deliveryBoard(Request $request)
+    {
+        $user = Auth::user();
+        $q = DB::table('pesanan_makanan')
+            ->join('merchant', 'pesanan_makanan.merchant_id', '=', 'merchant.id')
+            ->leftJoin('driver', 'pesanan_makanan.driver_id', '=', 'driver.id')
+            ->select('pesanan_makanan.*', 'merchant.nama_toko', 'driver.nama_driver')
+            ->where('pesanan_makanan.tipe_pengiriman', 'delivery')
+            ->orderByDesc('pesanan_makanan.id');
+        if ($user && ! $user->hasRole('superadmin')) {
+            $q->where('pesanan_makanan.koperasi_id', $user->koperasi_id);
+        }
+        $items = $q->get();
+        $dq = DB::table('driver')->select('id', 'nama_driver');
+        if ($user && ! $user->hasRole('superadmin')) {
+            $dq->where('koperasi_id', $user->koperasi_id);
+        }
+        $drivers = $dq->orderBy('nama_driver')->get();
+        return view('pesanan_makanan.delivery_board', compact('items', 'drivers'));
+    }
+
+    public function assignDriver(Request $request, $id)
+    {
+        $v = $request->validate(['driver_id' => ['required', 'exists:driver,id']]);
+        $user = Auth::user();
+        $q = DB::table('pesanan_makanan')->where('id', (int) $id);
+        if ($user && ! $user->hasRole('superadmin')) {
+            $q->where('koperasi_id', $user->koperasi_id);
+        }
+        $exists = $q->exists();
+        if (! $exists) {
+            return redirect()->back()->with('status', 'Order tidak ditemukan');
+        }
+        DB::table('pesanan_makanan')->where('id', (int) $id)->update([
+            'driver_id' => (int) $v['driver_id'],
+            'status' => 'dikirim',
+            'updated_at' => now(),
+        ]);
+        return redirect()->back()->with('status', 'Driver ditetapkan');
+    }
+
+    public function completeDelivery(Request $request, $id)
+    {
+        $user = Auth::user();
+        $q = DB::table('pesanan_makanan')->where('id', (int) $id);
+        if ($user && ! $user->hasRole('superadmin')) {
+            $q->where('koperasi_id', $user->koperasi_id);
+        }
+        $updated = $q->whereIn('status', ['dikirim'])->update([
+            'status' => 'selesai',
+            'updated_at' => now(),
+        ]);
+        if ($updated === 0) {
+            return redirect()->back()->with('status', 'Order tidak valid');
+        }
+        return redirect()->back()->with('status', 'Order selesai');
+    }
 }

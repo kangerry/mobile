@@ -75,6 +75,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const sidebarEl = document.querySelector('.sidebar');
   if (sidebarEl) {
+    const restoreGroups = () => {
+      document.querySelectorAll('.group-toggle').forEach((btn) => {
+        const key = 'sidebar_group_' + (btn.getAttribute('data-group') || '');
+        let collapsed = false;
+        try { collapsed = localStorage.getItem(key) === '1'; } catch (e) {}
+        const menu = document.querySelector('.group-menu[data-group="' + btn.getAttribute('data-group') + '"]');
+        if (menu) {
+          menu.classList.toggle('collapsed', collapsed);
+          btn.classList.toggle('collapsed', collapsed);
+        }
+        btn.addEventListener('click', () => {
+          const now = !menu.classList.contains('collapsed');
+          menu.classList.toggle('collapsed', now);
+          btn.classList.toggle('collapsed', now);
+          try { localStorage.setItem(key, now ? '1' : '0'); } catch (e) {}
+        });
+      });
+    };
+    restoreGroups();
     let backdrop;
     const ensureBackdrop = () => {
       if (!backdrop) {

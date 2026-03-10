@@ -7,10 +7,17 @@
 </div>
 <div class="card">
   <table class="table">
-    <thead><tr><th>Nama Toko</th><th>Pemilik</th><th>Kota</th><th>Status</th><th>Aksi</th></tr></thead>
+    <thead><tr><th>Banner</th><th>Nama Toko</th><th>Pemilik</th><th>Kota</th><th>Status</th><th>Aksi</th></tr></thead>
     <tbody>
       @forelse(($items ?? []) as $i)
       <tr>
+        <td>
+          @if(!empty($i->banner))
+            <img src="{{ asset('storage/'.ltrim($i->banner, '/')) }}" style="height:48px;border-radius:6px;border:1px solid #e5e7eb;">
+          @else
+            <span class="muted">-</span>
+          @endif
+        </td>
         <td>{{ $i->nama_toko }}</td>
         <td>{{ $i->nama_pemilik }}</td>
         <td>{{ $i->kota }}</td>
@@ -23,7 +30,7 @@
         </td>
       </tr>
       @empty
-      <tr><td colspan="5">Belum ada data</td></tr>
+      <tr><td colspan="6">Belum ada data</td></tr>
       @endforelse
     </tbody>
   </table>

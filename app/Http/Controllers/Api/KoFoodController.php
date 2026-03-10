@@ -10,8 +10,10 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use App\Models\Anggota;
+use App\Models\Merchant;
 use App\Services\FoodOrderService;
 use App\Services\DokuClient;
+use App\Services\FcmService;
 
 class KoFoodController extends BaseController
 {
@@ -30,11 +32,25 @@ class KoFoodController extends BaseController
                 $path = $candidate;
             }
         }
-        if (! Storage::disk('public')->exists($path)) {
+        $disk = Storage::disk('public');
+        if (! $disk->exists($path)) {
             return response()->json(['message' => 'Not found'], 404);
         }
-        $full = Storage::disk('public')->path($path);
-        return response()->file($full)->header('Access-Control-Allow-Origin', '*');
+        $mime = $disk->mimeType($path) ?: 'application/octet-stream';
+        $stream = $disk->readStream($path);
+        if (! $stream) {
+            return response()->json(['message' => 'Cannot read file'], 500);
+        }
+        return response()->stream(function () use ($stream) {
+            fpassthru($stream);
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }, 200, [
+            'Content-Type' => $mime,
+            'Cache-Control' => 'public, max-age=86400',
+            'Access-Control-Allow-Origin' => '*',
+        ]);
     }
 
     public function createOrder(Request $request, FoodOrderService $orders, DokuClient $doku)
@@ -136,6 +152,49 @@ class KoFoodController extends BaseController
                 'subtotal' => $harga * $qty,
             ]);
         }
+        // Notify seller (merchant owner)
+        try {
+            if (! empty($merchantRow?->anggota_id)) {
+                // FCM tokens
+                $fcmTokens = DB::table('anggota_device_tokens')
+                    ->where('anggota_id', (int) $merchantRow->anggota_id)
+                    ->where(function ($q) {
+                        $q->whereNull('platform')->orWhere('platform', '!=', 'onesignal');
+                    })
+                    ->pluck('token')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+                // OneSignal Player IDs
+                $oneSignalIds = DB::table('anggota_device_tokens')
+                    ->where('anggota_id', (int) $merchantRow->anggota_id)
+                    ->where('platform', 'onesignal')
+                    ->pluck('token')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+                if (! empty($fcmTokens) || ! empty($oneSignalIds)) {
+                    $title = 'Pesanan Baru';
+                    $totalText = number_format((float) $total, 0, ',', '.');
+                    $body = $nomor.' • Total Rp '.$totalText;
+                    $data = [
+                        'type' => 'kofood_order_new',
+                        'order_id' => (string) $orderId,
+                        'number' => (string) $nomor,
+                    ];
+                    if (! empty($fcmTokens)) {
+                        (new FcmService)->sendToTokens($fcmTokens, $title, $body, $data);
+                    }
+                    if (! empty($oneSignalIds)) {
+                        (new \App\Services\OneSignalService)->sendToPlayerIds($oneSignalIds, $title, $body, $data);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // silently ignore notification errors
+        }
         $payUrl = null;
         if ($v['payment'] === 'pg') {
             $anggotaProfile = [
@@ -185,6 +244,93 @@ class KoFoodController extends BaseController
         ], 201);
     }
 
+    public function sellerOrders(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $merchantId = null;
+        if ($user instanceof Merchant) {
+            $merchantId = (int) $user->id;
+        } elseif ($user instanceof Anggota) {
+            $m = DB::table('merchant')
+                ->where('koperasi_id', $kopId)
+                ->where('anggota_id', (int) $user->id)
+                ->where('status', 'aktif')
+                ->first();
+            if ($m) {
+                $merchantId = (int) $m->id;
+            }
+        }
+        if (! $merchantId) {
+            return response()->json(['message' => 'Hanya seller yang dapat melihat pesanan'], 403);
+        }
+        $items = DB::table('pesanan_makanan')
+            ->where('koperasi_id', $kopId)
+            ->where('merchant_id', $merchantId)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(function ($r) {
+                return [
+                    'id' => (int) $r->id,
+                    'number' => $r->nomor_pesanan,
+                    'status' => $r->status,
+                    'payment_status' => $r->status_pembayaran,
+                    'total' => (float) $r->total_bayar,
+                    'dest' => [
+                        'address' => $r->alamat_tujuan ?? null,
+                        'lat' => isset($r->latitude_tujuan) ? (float) $r->latitude_tujuan : null,
+                        'lng' => isset($r->longitude_tujuan) ? (float) $r->longitude_tujuan : null,
+                    ],
+                    'created_at' => $r->created_at,
+                ];
+            });
+
+        return response()->json(['data' => $items]);
+    }
+
+    public function processSellerOrder(Request $request, $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $merchantId = null;
+        if ($user instanceof Merchant) {
+            $merchantId = (int) $user->id;
+        } elseif ($user instanceof Anggota) {
+            $m = DB::table('merchant')
+                ->where('koperasi_id', $kopId)
+                ->where('anggota_id', (int) $user->id)
+                ->where('status', 'aktif')
+                ->first();
+            if ($m) {
+                $merchantId = (int) $m->id;
+            }
+        }
+        if (! $merchantId) {
+            return response()->json(['message' => 'Hanya seller yang dapat memproses pesanan'], 403);
+        }
+        $updated = DB::table('pesanan_makanan')
+            ->where('koperasi_id', $kopId)
+            ->where('merchant_id', $merchantId)
+            ->where('id', (int) $id)
+            ->where('status', 'baru')
+            ->update([
+                'status' => 'diproses',
+                'updated_at' => now(),
+            ]);
+        if ($updated === 0) {
+            return response()->json(['message' => 'Pesanan tidak ditemukan atau sudah diproses'], 404);
+        }
+
+        return response()->json(['message' => 'OK']);
+    }
+
     public function categories(Request $request)
     {
         $kopId = (int) $request->header('X-Koperasi-Id');
@@ -192,10 +338,16 @@ class KoFoodController extends BaseController
             ->where('koperasi_id', $kopId)
             ->orderBy('nama_kategori')
             ->get()
-            ->map(function ($r) {
+            ->map(function ($r) use ($kopId) {
+                $img = null;
+                if (!empty($r->gambar)) {
+                    $path = ltrim($r->gambar, '/');
+                    $img = URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.$kopId);
+                }
                 return [
                     'id' => (int) $r->id,
                     'name' => $r->nama_kategori,
+                    'imageUrl' => $img,
                 ];
             });
 
@@ -212,7 +364,7 @@ class KoFoodController extends BaseController
             ->where('koperasi_id', $kopId)
             ->where('status', 'aktif')
             ->get();
-        $data = $rows->map(function ($m) use ($lat, $lng) {
+        $data = $rows->map(function ($m) use ($lat, $lng, $kopId) {
             $dist = 0.0;
             if (! is_null($lat) && ! is_null($lng) && isset($m->latitude, $m->longitude)) {
                 $lat1 = (float) $lat;
@@ -226,10 +378,27 @@ class KoFoodController extends BaseController
                 $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
                 $dist = max(0.0, $earth * $c);
             }
+            $bannerUrl = null;
+            if (! empty($m->banner)) {
+                $path = ltrim($m->banner, '/');
+                $bannerUrl = URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.$kopId);
+            } else {
+                $firstPhoto = DB::table('produk_makanan')
+                    ->join('produk_foto', 'produk_makanan.id', '=', 'produk_foto.produk_id')
+                    ->where('produk_makanan.merchant_id', $m->id)
+                    ->orderBy('produk_foto.urutan')
+                    ->value('produk_foto.url_foto');
+                if ($firstPhoto) {
+                    $path = trim((string) $firstPhoto);
+                    $bannerUrl = Str::startsWith($path, ['http://', 'https://'])
+                        ? $path
+                        : URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.$kopId);
+                }
+            }
             return [
                 'id' => (string) $m->id,
                 'name' => $m->nama_toko,
-                'bannerUrl' => null,
+                'bannerUrl' => $bannerUrl,
                 'distanceKm' => $dist,
                 'rating' => 0,
                 'address' => $m->alamat,
@@ -247,12 +416,29 @@ class KoFoodController extends BaseController
         if (! $m) {
             return response()->json(['message' => 'Not found'], 404);
         }
+        $bannerUrl = null;
+        if (! empty($m->banner)) {
+            $path = ltrim($m->banner, '/');
+            $bannerUrl = URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.(int) request()->header('X-Koperasi-Id'));
+        } else {
+            $firstPhoto = DB::table('produk_makanan')
+                ->join('produk_foto', 'produk_makanan.id', '=', 'produk_foto.produk_id')
+                ->where('produk_makanan.merchant_id', $m->id)
+                ->orderBy('produk_foto.urutan')
+                ->value('produk_foto.url_foto');
+            if ($firstPhoto) {
+                $path = trim((string) $firstPhoto);
+                $bannerUrl = Str::startsWith($path, ['http://', 'https://'])
+                    ? $path
+                    : URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.(int) request()->header('X-Koperasi-Id'));
+            }
+        }
 
         return response()->json([
             'data' => [
                 'id' => (string) $m->id,
                 'name' => $m->nama_toko,
-                'bannerUrl' => null,
+                'bannerUrl' => $bannerUrl,
                 'distanceKm' => 0,
                 'rating' => 0,
                 'address' => $m->alamat,
@@ -260,12 +446,13 @@ class KoFoodController extends BaseController
         ]);
     }
 
-    public function merchantProducts($merchantId)
+    public function merchantProducts(Request $request, $merchantId)
     {
         $isActive = DB::table('merchant')->where('id', $merchantId)->where('status', 'aktif')->exists();
         if (! $isActive) {
             return response()->json(['message' => 'Not found'], 404);
         }
+        $kopId = (int) $request->header('X-Koperasi-Id');
         $rows = DB::table('produk_makanan')->where('merchant_id', $merchantId)->orderBy('nama_produk')->get();
         $ids = $rows->pluck('id')->all();
         $fotos = DB::table('produk_foto')->whereIn('produk_id', $ids)->orderBy('urutan')->get()->groupBy('produk_id');
@@ -279,7 +466,7 @@ class KoFoodController extends BaseController
                     }
                     $images[] = Str::startsWith($path, ['http://', 'https://'])
                         ? $path
-                        : URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path));
+                        : URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.request()->header('X-Koperasi-Id'));
                 }
             }
 
@@ -296,12 +483,13 @@ class KoFoodController extends BaseController
         return response()->json(['data' => $data]);
     }
 
-    public function product($id)
+    public function product(Request $request, $id)
     {
         $p = DB::table('produk_makanan')->where('id', $id)->first();
         if (! $p) {
             return response()->json(['message' => 'Not found'], 404);
         }
+        $kopId = (int) $request->header('X-Koperasi-Id');
         $fotos = DB::table('produk_foto')->where('produk_id', $p->id)->orderBy('urutan')->get();
         $images = [];
         foreach ($fotos as $f) {
@@ -311,7 +499,7 @@ class KoFoodController extends BaseController
             }
             $images[] = Str::startsWith($path, ['http://', 'https://'])
                 ? $path
-                : URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path));
+                : URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.request()->header('X-Koperasi-Id'));
         }
 
         return response()->json([
@@ -412,10 +600,7 @@ class KoFoodController extends BaseController
             return response()->json(['message' => 'Not found'], 404);
         }
         $merchant = DB::table('merchant')->where('id', $order->merchant_id)->first();
-        $driver = null;
-        if ($order->driver_id) {
-            $driver = DB::table('driver')->where('id', $order->driver_id)->first();
-        }
+        $driver = $order->driver_id ? DB::table('driver')->where('id', $order->driver_id)->first() : null;
         $origin = [
             'lat' => (float) ($merchant->latitude ?? 0),
             'lng' => (float) ($merchant->longitude ?? 0),
@@ -425,8 +610,8 @@ class KoFoodController extends BaseController
             'lng' => (float) ($order->longitude_tujuan ?? 0),
         ];
         $driverPos = [
-            'lat' => (float) ($driver->latitude_terakhir ?? $origin['lat']),
-            'lng' => (float) ($driver->longitude_terakhir ?? $origin['lng']),
+            'lat' => (float) ($driver?->latitude_terakhir ?? $origin['lat']),
+            'lng' => (float) ($driver?->longitude_terakhir ?? $origin['lng']),
         ];
         $haversine = function ($aLat, $aLng, $bLat, $bLng) {
             $earth = 6371.0;
@@ -476,8 +661,8 @@ class KoFoodController extends BaseController
                 'driver' => [
                     'lat' => $driverPos['lat'],
                     'lng' => $driverPos['lng'],
-                    'name' => $driver->nama_driver ?? 'Driver',
-                    'plate' => $driver->plat_nomor ?? '',
+                    'name' => $driver?->nama_driver ?? 'Driver',
+                    'plate' => $driver?->plat_nomor ?? '',
                 ],
                 'eta_minutes' => $etaMinutes,
                 'updated_at' => now()->toIso8601String(),

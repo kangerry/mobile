@@ -3,7 +3,7 @@
 @section('content')
 <div class="card">
   <div class="card-title" style="margin-bottom:12px;">Form Merchant</div>
-  <form method="POST" action="{{ route('merchant.store') }}">@csrf
+  <form method="POST" action="{{ route('merchant.store') }}" enctype="multipart/form-data">@csrf
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div>
         <label>Koperasi</label>
@@ -38,6 +38,11 @@
           <option value="pending" selected>Pending</option>
           <option value="nonaktif">Nonaktif</option>
         </select>
+      </div>
+      <div style="grid-column:1/-1;">
+        <label>Banner Toko (opsional)</label>
+        <input type="file" name="banner" accept="image/*" style="display:block;margin-top:6px;">
+        <small class="muted">Rasio disarankan 16:9, ukuran maks 4MB</small>
       </div>
     </div>
     <div style="margin-top:12px;"><button class="btn-brand">Simpan</button></div>
