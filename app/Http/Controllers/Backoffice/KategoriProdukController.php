@@ -22,8 +22,16 @@ class KategoriProdukController extends BaseController
                 $query->where('kategori_produk.koperasi_id', $user->koperasi_id);
             }
             $items = $query->get();
-
             return view('kategori_produk.index', compact('items'));
+        } catch (\Illuminate\Database\QueryException $e) {
+            \Log::error('kategori-produk index SQL error: '.$e->getMessage(), [
+                'sql' => $e->getSql(),
+                'bindings' => $e->getBindings(),
+                'code' => $e->getCode(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            abort(500);
         } catch (\Throwable $e) {
             \Log::error('kategori-produk index error: '.$e->getMessage(), [
                 'code' => $e->getCode(),
