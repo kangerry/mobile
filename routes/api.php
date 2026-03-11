@@ -79,7 +79,9 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
     });
 
     Route::prefix('seller')->middleware(['auth:sanctum', TenantMiddleware::class])->group(function () {
+        Route::get('products', [SellerProductController::class, 'index']);
         Route::post('products', [SellerProductController::class, 'store']);
+        Route::put('products/{id}', [SellerProductController::class, 'update']);
         Route::post('products/{id}/photos', [SellerProductController::class, 'uploadPhoto']);
         Route::get('orders', [KoFoodController::class, 'sellerOrders']);
         Route::post('orders/{id}/process', [KoFoodController::class, 'processSellerOrder']);
