@@ -13,19 +13,18 @@
       <tr>
         <td>
           @if(!empty($i->gambar))
-          @php
-            $g = trim($i->gambar ?? '');
-            if (\Illuminate\Support\Str::startsWith($g, ['http://', 'https://'])) {
-              $src = $g;
-            } elseif (\Illuminate\Support\Str::startsWith($g, 'storage/')) {
-              $src = asset(ltrim($g, '/'));
-            } else {
-              $src = asset('storage/'.ltrim($g, '/'));
-            }
-          @endphp
-          <img src="{{ $src }}" alt="Gambar kategori" style="height:48px;border-radius:6px;border:1px solid #e5e7eb;">
+            <img
+              src="{{ \Illuminate\Support\Str::startsWith(trim($i->gambar ?? ''), ['http://', 'https://'])
+                ? trim($i->gambar)
+                : (\Illuminate\Support\Str::startsWith(trim($i->gambar ?? ''), 'storage/')
+                    ? asset(ltrim(trim($i->gambar ?? ''), '/'))
+                    : asset('storage/'.ltrim(trim($i->gambar ?? ''), '/'))
+                  )
+              }}"
+              alt="Gambar kategori"
+              style="height:48px;border-radius:6px;border:1px solid #e5e7eb;">
           @else
-          <span class="muted">-</span>
+            <span class="muted">-</span>
           @endif
         </td>
         <td>{{ $i->nama_kategori }}</td>
