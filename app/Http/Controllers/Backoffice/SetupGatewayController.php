@@ -61,7 +61,7 @@ class SetupGatewayController extends BaseController
             'DOKU_CLIENT_ID' => 'required|string',
             'DOKU_SECRET_KEY' => 'required|string',
             'DOKU_API_KEY' => 'required|string',
-            'DOKU_PRIVATE_KEY' => 'required|string',
+            'DOKU_PRIVATE_KEY' => 'required_if:DOKU_ENV,production|nullable|string',
             'DOKU_PUBLIC_KEY' => 'required|string',
             'DOKU_BASE_URL' => 'required|string',
         ]);
