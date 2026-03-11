@@ -311,6 +311,9 @@ class AuthApiController extends Controller
                     'email' => $user->email,
                     'telepon' => $user->telepon,
                     'alamat' => $user->alamat,
+                    'deskripsi' => $user->deskripsi ?? null,
+                    'latitude' => $user->latitude ?? null,
+                    'longitude' => $user->longitude ?? null,
                     'status' => $user->status,
                 ],
             ]);
@@ -362,6 +365,9 @@ class AuthApiController extends Controller
                 'email' => ['nullable', 'email'],
                 'telepon' => ['nullable', 'string', 'max:20'],
                 'alamat' => ['nullable', 'string'],
+                'deskripsi' => ['nullable', 'string'],
+                'latitude' => ['nullable', 'numeric'],
+                'longitude' => ['nullable', 'numeric'],
                 'password' => ['nullable', 'string', 'min:6'],
             ]);
             if (isset($payload['email'])) {
@@ -383,6 +389,15 @@ class AuthApiController extends Controller
             }
             if (isset($payload['alamat'])) {
                 $user->alamat = $payload['alamat'];
+            }
+            if (isset($payload['deskripsi'])) {
+                $user->deskripsi = $payload['deskripsi'];
+            }
+            if (isset($payload['latitude'])) {
+                $user->latitude = (float) $payload['latitude'];
+            }
+            if (isset($payload['longitude'])) {
+                $user->longitude = (float) $payload['longitude'];
             }
             if (! empty($payload['password'])) {
                 $user->password = Hash::make($payload['password']);
