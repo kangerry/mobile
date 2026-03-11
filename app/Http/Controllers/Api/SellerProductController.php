@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -136,6 +137,97 @@ class SellerProductController extends BaseController
                 'trace' => $e->getTraceAsString(),
             ]);
             return response()->json(['message' => 'Terjadi kesalahan saat menyimpan produk'], 500);
+        }
+    }
+
+    public function listPhotos(Request $request, $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $merchantId = null;
+        if ($user instanceof Merchant) {
+            $merchantId = (int) $user->id;
+        } elseif ($user instanceof Anggota) {
+            $m = DB::table('merchant')
+                ->where('koperasi_id', $kopId)
+                ->where('anggota_id', (int) $user->id)
+                ->where('status', 'aktif')
+                ->first();
+            if ($m) {
+                $merchantId = (int) $m->id;
+            }
+        }
+        if (! $merchantId) {
+            return response()->json(['message' => 'Hanya seller yang dapat mengelola produk'], 403);
+        }
+        $prod = DB::table('produk_makanan')->where('id', (int) $id)->first();
+        if (! $prod || (int) $prod->merchant_id !== $merchantId) {
+            return response()->json(['message' => 'Produk tidak ditemukan'], 404);
+        }
+        $rows = DB::table('produk_foto')->where('produk_id', (int) $id)->orderBy('urutan')->get();
+        $data = $rows->map(function ($r) use ($request) {
+            $path = trim((string) $r->url_foto);
+            $url = Str::startsWith($path, ['http://', 'https://'])
+                ? $path
+                : url('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.(int) $request->header('X-Koperasi-Id'));
+            return [
+                'id' => (int) $r->id,
+                'url' => $url,
+                'urutan' => (int) ($r->urutan ?? 0),
+            ];
+        });
+        return response()->json(['data' => $data]);
+    }
+
+    public function deletePhoto(Request $request, $id, $photoId)
+    {
+        try {
+            $user = $request->user();
+            if (! $user) {
+                return response()->json(['message' => 'Unauthenticated'], 401);
+            }
+            $kopId = (int) $request->attributes->get('koperasi_id');
+            $merchantId = null;
+            if ($user instanceof Merchant) {
+                $merchantId = (int) $user->id;
+            } elseif ($user instanceof Anggota) {
+                $m = DB::table('merchant')
+                    ->where('koperasi_id', $kopId)
+                    ->where('anggota_id', (int) $user->id)
+                    ->where('status', 'aktif')
+                    ->first();
+                if ($m) {
+                    $merchantId = (int) $m->id;
+                }
+            }
+            if (! $merchantId) {
+                return response()->json(['message' => 'Hanya seller yang dapat mengelola produk'], 403);
+            }
+            $prod = DB::table('produk_makanan')->where('id', (int) $id)->first();
+            if (! $prod || (int) $prod->merchant_id !== $merchantId) {
+                return response()->json(['message' => 'Produk tidak ditemukan'], 404);
+            }
+            $row = DB::table('produk_foto')->where('id', (int) $photoId)->where('produk_id', (int) $id)->first();
+            if (! $row) {
+                return response()->json(['message' => 'Foto tidak ditemukan'], 404);
+            }
+            $path = trim((string) $row->url_foto);
+            DB::table('produk_foto')->where('id', (int) $photoId)->delete();
+            if ($path !== '' && ! Str::startsWith($path, ['http://', 'https://'])) {
+                Storage::disk('public')->delete($path);
+            }
+            Log::info('Foto produk dihapus', ['produk_id' => (int) $id, 'photo_id' => (int) $photoId, 'merchant_id' => $merchantId]);
+            return response()->json(['message' => 'OK']);
+        } catch (\Throwable $e) {
+            Log::error('Gagal hapus foto produk', [
+                'produk_id' => (int) $id,
+                'photo_id' => (int) $photoId,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['message' => 'Terjadi kesalahan saat hapus foto'], 500);
         }
     }
 

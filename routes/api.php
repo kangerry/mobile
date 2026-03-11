@@ -83,6 +83,8 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
         Route::post('products', [SellerProductController::class, 'store']);
         Route::put('products/{id}', [SellerProductController::class, 'update']);
         Route::post('products/{id}/photos', [SellerProductController::class, 'uploadPhoto']);
+        Route::get('products/{id}/photos', [SellerProductController::class, 'listPhotos']);
+        Route::delete('products/{id}/photos/{photoId}', [SellerProductController::class, 'deletePhoto']);
         Route::get('orders', [KoFoodController::class, 'sellerOrders']);
         Route::post('orders/{id}/process', [KoFoodController::class, 'processSellerOrder']);
     });
