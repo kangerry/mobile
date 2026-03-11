@@ -13,6 +13,9 @@ class SetupGatewayController extends BaseController
     public function index(Request $request)
     {
         $kode = $request->query('kode_koperasi');
+        if ($kode) {
+            $kode = strtoupper(trim((string) $kode));
+        }
         $values = [
             'kode_koperasi' => $kode ?? '',
             'DOKU_ENV' => 'sandbox',
@@ -63,6 +66,7 @@ class SetupGatewayController extends BaseController
             'DOKU_BASE_URL' => 'required|string',
         ]);
 
+        $data['kode_koperasi'] = strtoupper(trim($data['kode_koperasi']));
         $base = trim(str_replace(['`', ' '], '', $data['DOKU_BASE_URL']));
         $pub = $data['DOKU_PUBLIC_KEY'];
         $pub = str_replace(["\r\n", "\r"], "\n", $pub);
@@ -88,6 +92,40 @@ class SetupGatewayController extends BaseController
         }
 
         return redirect()->route('setup-gateway.index', ['kode_koperasi' => $data['kode_koperasi']])->with('status', 'Konfigurasi DOKU tersimpan untuk koperasi '.$data['kode_koperasi']);
+    }
+
+    public function dbCheck(Request $request)
+    {
+        $kode = strtoupper(trim((string) $request->input('kode_koperasi', '')));
+        $default = config('database.default');
+        $conn = config("database.connections.{$default}");
+        $dbName = (string) ($conn['database'] ?? '');
+        $driver = (string) ($conn['driver'] ?? 'unknown');
+        $hasTable = \Illuminate\Support\Facades\Schema::hasTable('doku_settings');
+        $expected = ['kode_koperasi', 'env', 'client_id', 'secret_key', 'api_key', 'public_key', 'base_url', 'private_key', 'created_at', 'updated_at'];
+        $cols = [];
+        if ($hasTable) {
+            foreach ($expected as $c) {
+                $cols[$c] = \Illuminate\Support\Facades\Schema::hasColumn('doku_settings', $c) ? 'OK' : 'MISSING';
+            }
+        }
+        $count = 0;
+        if ($hasTable && $kode !== '') {
+            try {
+                $count = (int) DB::table('doku_settings')->where('kode_koperasi', $kode)->count();
+            } catch (\Throwable $e) {
+            }
+        }
+        $msg = "DB driver={$driver}, database={$dbName}. Table doku_settings: ".($hasTable ? 'ADA' : 'TIDAK ADA').'.';
+        if ($hasTable) {
+            $missing = array_keys(array_filter($cols, fn ($v) => $v === 'MISSING'));
+            $msg .= ' Kolom hilang: '.(empty($missing) ? '-' : implode(',', $missing)).'.';
+            if ($kode !== '') {
+                $msg .= " Baris untuk {$kode}: {$count}.";
+            }
+        }
+
+        return redirect()->back()->with('status', $msg);
     }
 
     public function testConnection(Request $request)

@@ -68,6 +68,13 @@
       <div class="muted">Data akan tersimpan per koperasi berdasarkan kode_koperasi.</div>
     </div>
   </form>
+  <form method="POST" action="{{ route('setup-gateway.dbcheck') }}" style="margin-top:12px;display:flex;gap:8px;align-items:center;">@csrf
+    <input type="hidden" name="kode_koperasi" value="{{ $values['kode_koperasi'] ?? '' }}">
+    <button class="btn-brand" {{ empty($values['kode_koperasi']) ? 'disabled' : '' }}>
+      <i class="fa fa-database"></i> DB Check
+    </button>
+    <div class="muted">Menguji ketersediaan tabel dan kolom di database, serta keberadaan baris untuk Kode Koperasi.</div>
+  </form>
   <form method="POST" action="{{ route('setup-gateway.test') }}" style="margin-top:12px;display:flex;gap:8px;align-items:center;">@csrf
     <input type="hidden" name="kode_koperasi" value="{{ $values['kode_koperasi'] ?? '' }}">
     <button class="btn-brand" {{ empty($values['kode_koperasi']) ? 'disabled' : '' }}>
