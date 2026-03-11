@@ -27,6 +27,7 @@ class DokuClient
         }
 
         return [
+            'env_name' => $row->env === 'production' ? 'production' : 'sandbox',
             'env' => $row->env === 'production' ? 'true' : 'false',
             'client_id' => $row->client_id,
             'secret_key' => $row->secret_key,
@@ -39,6 +40,12 @@ class DokuClient
     public function isConfigured(string $koperasiId): bool
     {
         return (bool) $this->resolveSettings($koperasiId);
+    }
+
+    public function getEnvName(string $koperasiId): ?string
+    {
+        $cfg = $this->resolveSettings($koperasiId);
+        return $cfg['env_name'] ?? null;
     }
 
     protected function getTokenB2B(array $cfg): ?string

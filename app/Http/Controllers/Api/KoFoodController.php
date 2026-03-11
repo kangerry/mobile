@@ -231,6 +231,12 @@ class KoFoodController extends BaseController
                 $payUrl = $va['how_to_pay_page'] ?? null;
             }
             if (! $payUrl) {
+                $envName = $doku->getEnvName((string) $kopId);
+                if ($envName === 'production') {
+                    return response()->json([
+                        'message' => 'Payment Gateway DOKU aktif (Production), tetapi VA tidak dapat dibuat. Periksa Private Key/Client ID/Secret Key/Public Key di Backoffice dan pastikan kredensial valid.'
+                    ], 422);
+                }
                 $payUrl = URL::to('/pg/simulated-checkout?order='.$nomor);
             }
         }
