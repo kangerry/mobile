@@ -167,31 +167,17 @@ class AuthApiController extends Controller
             return response()->json(['message' => 'Hanya anggota yang bisa beralih ke seller'], 403);
         }
         $koperasiId = (int) ($request->attributes->get('koperasi_id') ?? $user->koperasi_id);
-        $m = Merchant::query()
+        $mAny = Merchant::query()
             ->where('koperasi_id', $koperasiId)
             ->where('anggota_id', $user->id)
-            ->where('status', 'aktif')
             ->first();
-        if (! $m) {
-            $m = new Merchant();
-            $m->koperasi_id = $koperasiId;
-            $m->anggota_id = $user->id;
-            $m->nama_toko = $user->nama_anggota ?: 'Toko Anggota';
-            $m->nama_pemilik = $user->nama_anggota ?: null;
-            $m->email = $user->email ?: null;
-            $m->telepon = $user->telepon ?: null;
-            $m->alamat = 'Alamat belum diisi';
-            $m->kota = 'Kota';
-            $m->provinsi = 'Provinsi';
-            $m->latitude = 0;
-            $m->longitude = 0;
-            $m->aktif_delivery_toko = true;
-            $m->biaya_delivery_toko = 0;
-            $m->aktif_delivery_kojek = true;
-            $m->radius_layanan_km = 5;
-            $m->status = 'aktif';
-            $m->save();
+        if (! $mAny) {
+            return response()->json(['message' => 'Belum mengajukan sebagai seller'], 422);
         }
+        if ($mAny->status !== 'aktif') {
+            return response()->json(['message' => 'Pengajuan seller belum disetujui'], 403);
+        }
+        $m = $mAny;
         $token = $m->createToken('komera-mobile')->plainTextToken;
 
         return response()->json([

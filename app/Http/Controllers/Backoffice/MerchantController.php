@@ -59,6 +59,15 @@ class MerchantController extends BaseController
         ]);
         $user = Auth::user();
         $koperasiId = ($user && $user->hasRole('superadmin')) ? (int) $v['koperasi_id'] : (int) ($user->koperasi_id ?? $v['koperasi_id']);
+        if (! empty($v['anggota_id'])) {
+            $exists = DB::table('merchant')
+                ->where('koperasi_id', $koperasiId)
+                ->where('anggota_id', (int) $v['anggota_id'])
+                ->exists();
+            if ($exists) {
+                return redirect()->back()->with('status', 'Anggota tersebut sudah memiliki toko di koperasi ini');
+            }
+        }
         $bannerPath = null;
         if ($request->hasFile('banner')) {
             $file = $request->file('banner');
@@ -125,6 +134,16 @@ class MerchantController extends BaseController
         ]);
         $user = Auth::user();
         $koperasiId = ($user && $user->hasRole('superadmin')) ? (int) $v['koperasi_id'] : (int) ($user->koperasi_id ?? $v['koperasi_id']);
+        if (! empty($v['anggota_id'])) {
+            $exists = DB::table('merchant')
+                ->where('koperasi_id', $koperasiId)
+                ->where('anggota_id', (int) $v['anggota_id'])
+                ->where('id', '<>', $id)
+                ->exists();
+            if ($exists) {
+                return redirect()->back()->with('status', 'Anggota tersebut sudah memiliki toko di koperasi ini');
+            }
+        }
         $update = [
             'koperasi_id' => $koperasiId,
             'nama_toko' => $v['nama_toko'],
