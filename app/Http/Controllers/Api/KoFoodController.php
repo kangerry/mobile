@@ -211,19 +211,29 @@ class KoFoodController extends BaseController
                 $va = null;
             }
             if ($va && isset($va['virtual_account_no'])) {
-                DB::table('transaksi_gateway')->insert([
-                    'koperasi_id' => (int) $kopId,
-                    'gateway_id' => 0,
-                    'tipe_transaksi' => 'KOFOOD_ORDER',
-                    'referensi_id' => (int) $orderId,
-                    'nomor_invoice' => $nomor,
-                    'external_id' => $va['virtual_account_no'],
-                    'jumlah' => (int) round($total),
-                    'response_payload' => json_encode($va),
-                    'status' => 'PENDING',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
+                $gwId = DB::table('setup_gateway')
+                    ->where('koperasi_id', (int) $kopId)
+                    ->where('status_aktif', true)
+                    ->orderByDesc('id')
+                    ->value('id');
+                if ($gwId) {
+                    try {
+                        DB::table('transaksi_gateway')->insert([
+                            'koperasi_id' => (int) $kopId,
+                            'gateway_id' => (int) $gwId,
+                            'tipe_transaksi' => 'KOFOOD_ORDER',
+                            'referensi_id' => (int) $orderId,
+                            'nomor_invoice' => $nomor,
+                            'external_id' => $va['virtual_account_no'],
+                            'jumlah' => (int) round($total),
+                            'response_payload' => json_encode($va),
+                            'status' => 'PENDING',
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    } catch (\Throwable $e) {
+                    }
+                }
                 DB::table('pesanan_makanan')->where('id', $orderId)->update([
                     'referensi_pembayaran' => 'VA:'.$va['virtual_account_no'],
                     'updated_at' => now(),
