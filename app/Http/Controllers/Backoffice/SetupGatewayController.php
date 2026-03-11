@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 
 class SetupGatewayController extends BaseController
 {
@@ -67,21 +68,21 @@ class SetupGatewayController extends BaseController
         $pub = str_replace(["\r\n", "\r"], "\n", $pub);
         $priv = str_replace(["\r\n", "\r"], "\n", $data['DOKU_PRIVATE_KEY']);
 
+        $payload = [
+            'env' => $data['DOKU_ENV'],
+            'client_id' => $data['DOKU_CLIENT_ID'],
+            'secret_key' => $data['DOKU_SECRET_KEY'],
+            'api_key' => $data['DOKU_API_KEY'],
+            'public_key' => $pub,
+            'base_url' => $base,
+            'updated_at' => now(),
+            'created_at' => now(),
+        ];
+        if (Schema::hasColumn('doku_settings', 'private_key')) {
+            $payload['private_key'] = $priv;
+        }
         try {
-            DB::table('doku_settings')->updateOrInsert(
-                ['kode_koperasi' => $data['kode_koperasi']],
-                [
-                    'env' => $data['DOKU_ENV'],
-                    'client_id' => $data['DOKU_CLIENT_ID'],
-                    'secret_key' => $data['DOKU_SECRET_KEY'],
-                    'api_key' => $data['DOKU_API_KEY'],
-                    'private_key' => $priv,
-                    'public_key' => $pub,
-                    'base_url' => $base,
-                    'updated_at' => now(),
-                    'created_at' => now(),
-                ]
-            );
+            DB::table('doku_settings')->updateOrInsert(['kode_koperasi' => $data['kode_koperasi']], $payload);
         } catch (\Throwable $e) {
             return redirect()->back()->with('status', 'Gagal menyimpan ke database: '.$e->getMessage());
         }

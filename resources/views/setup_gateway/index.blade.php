@@ -8,6 +8,11 @@
     <button class="btn-brand"><i class="fa fa-search"></i> Muat</button>
   </form>
 </div>
+@if (session('status'))
+<div class="alert" style="margin-bottom:12px;background:#f1f5f9;border:1px solid #e5e7eb;padding:10px;border-radius:8px;">
+  {{ session('status') }}
+  </div>
+@endif
 <div class="card">
   <div class="card-title" style="margin-bottom:12px;">Pengaturan Payment Gateway (DOKU)</div>
   <form method="POST" action="{{ route('setup-gateway.store') }}">@csrf

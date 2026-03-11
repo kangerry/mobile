@@ -18,6 +18,12 @@ class TenantMiddleware
         }
 
         $koperasiId = $request->header('X-Koperasi-Id') ?? $request->query('koperasi_id');
+        if (empty($koperasiId)) {
+            $user = $request->user();
+            if ($user && ! empty($user->koperasi_id)) {
+                $koperasiId = (string) $user->koperasi_id;
+            }
+        }
 
         if (empty($koperasiId)) {
             return response()->json([
