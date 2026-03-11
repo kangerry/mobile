@@ -12,7 +12,19 @@ class ProdukController extends BaseController
     {
         $items = DB::table('produk_makanan')
             ->join('merchant', 'produk_makanan.merchant_id', '=', 'merchant.id')
-            ->select('produk_makanan.*', 'merchant.nama_toko')
+            ->select(
+                'produk_makanan.*',
+                'merchant.nama_toko',
+                'merchant.koperasi_id',
+            )
+            ->selectSub(
+                DB::table('produk_foto')
+                    ->select('url_foto')
+                    ->whereColumn('produk_foto.produk_id', 'produk_makanan.id')
+                    ->orderBy('urutan')
+                    ->limit(1),
+                'foto_utama'
+            )
             ->orderByDesc('produk_makanan.id')
             ->get();
 

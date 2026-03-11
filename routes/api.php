@@ -67,6 +67,7 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
         Route::get('product-image', [KoFoodController::class, 'productImage']);
         Route::get('categories', [KoFoodController::class, 'categories']);
         Route::get('merchants', [KoFoodController::class, 'merchants']);
+        Route::get('search', [KoFoodController::class, 'search']);
         Route::get('merchants/{id}', [KoFoodController::class, 'merchant']);
         Route::get('merchants/{id}/products', [KoFoodController::class, 'merchantProducts']);
         Route::get('products/{id}', [KoFoodController::class, 'product']);

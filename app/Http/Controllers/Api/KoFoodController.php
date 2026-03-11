@@ -672,5 +672,64 @@ class KoFoodController extends BaseController
         ]);
     }
 
-    
+    public function search(Request $request)
+    {
+        $kopId = (int) ($request->attributes->get('koperasi_id') ?? $request->header('X-Koperasi-Id'));
+        $q = trim((string) $request->query('q', ''));
+        if ($q === '') {
+            return response()->json(['data' => []]);
+        }
+        $like = '%'.strtolower($q).'%';
+        $merchants = DB::table('merchant')
+            ->where('koperasi_id', $kopId)
+            ->where('status', 'aktif')
+            ->whereRaw('LOWER(nama_toko) LIKE ?', [$like])
+            ->limit(20)
+            ->get()
+            ->map(function ($m) {
+                return [
+                    'type' => 'merchant',
+                    'id' => (string) $m->id,
+                    'title' => $m->nama_toko,
+                    'subtitle' => $m->alamat,
+                    'image' => null,
+                ];
+            })
+            ->all();
+        $products = DB::table('produk_makanan')
+            ->join('merchant', 'produk_makanan.merchant_id', '=', 'merchant.id')
+            ->where('merchant.koperasi_id', $kopId)
+            ->where('merchant.status', 'aktif')
+            ->whereRaw('LOWER(produk_makanan.nama_produk) LIKE ?', [$like])
+            ->select('produk_makanan.*', 'merchant.nama_toko')
+            ->limit(30)
+            ->get();
+        $prodIds = $products->pluck('id')->all();
+        $fotos = DB::table('produk_foto')->whereIn('produk_id', $prodIds)->orderBy('urutan')->get()->groupBy('produk_id');
+        $productItems = $products->map(function ($p) use ($fotos) {
+            $img = null;
+            if (isset($fotos[$p->id])) {
+                foreach ($fotos[$p->id] as $f) {
+                    $path = trim((string) $f->url_foto);
+                    if ($path === '') {
+                        continue;
+                    }
+                    $img = Str::startsWith($path, ['http://', 'https://'])
+                        ? $path
+                        : url('/api/v1/kofood/product-image?path='.rawurlencode($path));
+                    break;
+                }
+            }
+            return [
+                'type' => 'product',
+                'id' => (string) $p->id,
+                'title' => $p->nama_produk,
+                'subtitle' => $p->nama_toko ?? '',
+                'image' => $img,
+            ];
+        })->all();
+        $data = array_values(array_merge($merchants, $productItems));
+
+        return response()->json(['data' => $data]);
+    }
 }

@@ -7,10 +7,21 @@
 </div>
 <div class="card">
   <table class="table">
-    <thead><tr><th>Nama</th><th>Merchant</th><th>Harga</th><th>Status</th><th>Aksi</th></tr></thead>
+    <thead><tr><th>Foto</th><th>Nama</th><th>Merchant</th><th>Harga</th><th>Status</th><th>Aksi</th></tr></thead>
     <tbody>
       @forelse($items ?? [] as $p)
       <tr>
+        <td>
+          @if (!empty($p->foto_utama))
+            <img src="{{ url('/api/v1/kofood/product-image?path='.rawurlencode($p->foto_utama).'&koperasi_id='.(int)($p->koperasi_id ?? 0)) }}"
+                 alt="foto"
+                 width="60"
+                 height="60"
+                 style="object-fit:cover;border-radius:6px;">
+          @else
+            -
+          @endif
+        </td>
         <td>{{ $p->nama_produk }}</td>
         <td>{{ $p->nama_toko }}</td>
         <td>{{ number_format($p->harga,0,',','.') }}</td>
@@ -23,7 +34,7 @@
         </td>
       </tr>
       @empty
-      <tr><td colspan="5">Belum ada data</td></tr>
+      <tr><td colspan="6">Belum ada data</td></tr>
       @endforelse
     </tbody>
   </table>
