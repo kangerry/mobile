@@ -7,46 +7,30 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    public bool $withinTransaction = false;
     public function up(): void
     {
+        $dups = DB::select("
+            SELECT koperasi_id, anggota_id, COUNT(*) AS c
+            FROM merchant
+            WHERE anggota_id IS NOT NULL
+            GROUP BY koperasi_id, anggota_id
+            HAVING COUNT(*) > 1
+        ");
+        if (! empty($dups)) {
+            return;
+        }
         try {
-            $dups = DB::select("
-                SELECT koperasi_id, anggota_id, COUNT(*) AS c
-                FROM merchant
-                WHERE anggota_id IS NOT NULL
-                GROUP BY koperasi_id, anggota_id
-                HAVING c > 1
-            ");
-            foreach ($dups as $d) {
-                $ids = DB::table('merchant')
-                    ->where('koperasi_id', $d->koperasi_id)
-                    ->where('anggota_id', $d->anggota_id)
-                    ->orderBy('id')
-                    ->pluck('id')
-                    ->toArray();
-                if (count($ids) > 1) {
-                    array_shift($ids);
-                    DB::table('merchant')->whereIn('id', $ids)->delete();
-                }
-            }
+            DB::statement('ALTER TABLE "merchant" ADD CONSTRAINT "merchant_koperasi_anggota_unique" UNIQUE ("koperasi_id","anggota_id")');
         } catch (\Throwable $e) {
         }
-        Schema::table('merchant', function (Blueprint $table) {
-            try {
-                $table->unique(['koperasi_id', 'anggota_id'], 'merchant_koperasi_anggota_unique');
-            } catch (\Throwable $e) {
-            }
-        });
     }
 
     public function down(): void
     {
-        Schema::table('merchant', function (Blueprint $table) {
-            try {
-                $table->dropUnique('merchant_koperasi_anggota_unique');
-            } catch (\Throwable $e) {
-            }
-        });
+        try {
+            DB::statement('ALTER TABLE "merchant" DROP CONSTRAINT IF EXISTS "merchant_koperasi_anggota_unique"');
+        } catch (\Throwable $e) {
+        }
     }
 };
-
