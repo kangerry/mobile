@@ -34,6 +34,7 @@ class DokuClient
             'private_key' => $row->private_key ?? '',
             'public_key' => $row->public_key,
             'base_url' => rtrim((string) $row->base_url, '/'),
+            'allow_sandbox_simulation' => isset($row->allow_sandbox_simulation) ? (bool) $row->allow_sandbox_simulation : true,
         ];
     }
 
@@ -46,6 +47,15 @@ class DokuClient
     {
         $cfg = $this->resolveSettings($koperasiId);
         return $cfg['env_name'] ?? null;
+    }
+
+    public function allowSandboxSimulation(string $koperasiId): bool
+    {
+        $cfg = $this->resolveSettings($koperasiId);
+        if (! $cfg) {
+            return true;
+        }
+        return (bool) ($cfg['allow_sandbox_simulation'] ?? true);
     }
 
     protected function getTokenB2B(array $cfg): ?string

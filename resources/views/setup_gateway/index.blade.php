@@ -40,6 +40,13 @@
         <div class="muted" style="font-size:12px;margin-top:4px;">Pilih lingkungan yang sedang aktif. Sandbox tidak membutuhkan Private Key; Production wajib memasukkan Private Key.</div>
       </div>
       <div>
+        <label style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" name="ALLOW_SANDBOX_SIM" value="1" {{ (!isset($values['ALLOW_SANDBOX_SIM']) || $values['ALLOW_SANDBOX_SIM']) ? 'checked' : '' }}>
+          Izinkan simulasi di Sandbox
+        </label>
+        <div class="muted" style="font-size:12px;margin-top:4px;">Jika dimatikan, Sandbox juga tidak akan memakai simulasi; pembuatan VA wajib berhasil ke DOKU.</div>
+      </div>
+      <div>
         <label>DOKU Base URL</label>
         <input name="DOKU_BASE_URL" value="{{ $values['DOKU_BASE_URL'] ?? '' }}" placeholder="https://api-sandbox.doku.com" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px">
       </div>

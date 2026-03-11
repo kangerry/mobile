@@ -232,9 +232,10 @@ class KoFoodController extends BaseController
             }
             if (! $payUrl) {
                 $envName = $doku->getEnvName((string) $kopId);
-                if ($envName === 'production') {
+                $allowSim = $doku->allowSandboxSimulation((string) $kopId);
+                if ($envName === 'production' || ($envName === 'sandbox' && ! $allowSim)) {
                     return response()->json([
-                        'message' => 'Payment Gateway DOKU aktif (Production), tetapi VA tidak dapat dibuat. Periksa Private Key/Client ID/Secret Key/Public Key di Backoffice dan pastikan kredensial valid.'
+                        'message' => 'Payment Gateway DOKU aktif ('.$envName.'), tetapi VA tidak dapat dibuat. Periksa kredensial di Backoffice.'
                     ], 422);
                 }
                 $payUrl = URL::to('/pg/simulated-checkout?order='.$nomor);

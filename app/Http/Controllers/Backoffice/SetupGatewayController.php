@@ -25,6 +25,7 @@ class SetupGatewayController extends BaseController
             'DOKU_PRIVATE_KEY' => '',
             'DOKU_PUBLIC_KEY' => '',
             'DOKU_BASE_URL' => '',
+            'ALLOW_SANDBOX_SIM' => 1,
         ];
         if ($kode) {
             try {
@@ -39,6 +40,7 @@ class SetupGatewayController extends BaseController
                         'DOKU_PRIVATE_KEY' => $row->private_key ?? '',
                         'DOKU_PUBLIC_KEY' => $row->public_key,
                         'DOKU_BASE_URL' => $row->base_url,
+                        'ALLOW_SANDBOX_SIM' => isset($row->allow_sandbox_simulation) ? (int) $row->allow_sandbox_simulation : 1,
                     ];
                 }
             } catch (\Throwable $e) {
@@ -85,6 +87,9 @@ class SetupGatewayController extends BaseController
         if (Schema::hasColumn('doku_settings', 'private_key')) {
             $payload['private_key'] = $priv;
         }
+        if (Schema::hasColumn('doku_settings', 'allow_sandbox_simulation')) {
+            $payload['allow_sandbox_simulation'] = $request->has('ALLOW_SANDBOX_SIM') ? 1 : 0;
+        }
         try {
             DB::table('doku_settings')->updateOrInsert(['kode_koperasi' => $data['kode_koperasi']], $payload);
         } catch (\Throwable $e) {
@@ -102,7 +107,7 @@ class SetupGatewayController extends BaseController
         $dbName = (string) ($conn['database'] ?? '');
         $driver = (string) ($conn['driver'] ?? 'unknown');
         $hasTable = \Illuminate\Support\Facades\Schema::hasTable('doku_settings');
-        $expected = ['kode_koperasi', 'env', 'client_id', 'secret_key', 'api_key', 'public_key', 'base_url', 'private_key', 'created_at', 'updated_at'];
+        $expected = ['kode_koperasi', 'env', 'client_id', 'secret_key', 'api_key', 'public_key', 'base_url', 'private_key', 'allow_sandbox_simulation', 'created_at', 'updated_at'];
         $cols = [];
         if ($hasTable) {
             foreach ($expected as $c) {
