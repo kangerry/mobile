@@ -32,11 +32,12 @@
         <input name="kode_koperasi" value="{{ $values['kode_koperasi'] ?? '' }}" placeholder="Wajib diisi" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px">
       </div>
       <div>
-        <label>Environment</label>
+        <label>Gateway Aktif (Environment)</label>
         <select name="DOKU_ENV" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px">
           <option value="sandbox" {{ ($values['DOKU_ENV'] ?? '') === 'sandbox' ? 'selected' : '' }}>Sandbox</option>
           <option value="production" {{ ($values['DOKU_ENV'] ?? '') === 'production' ? 'selected' : '' }}>Production</option>
         </select>
+        <div class="muted" style="font-size:12px;margin-top:4px;">Pilih lingkungan yang sedang aktif. Sandbox tidak membutuhkan Private Key; Production wajib memasukkan Private Key.</div>
       </div>
       <div>
         <label>DOKU Base URL</label>
@@ -57,6 +58,7 @@
       <div style="grid-column:1/-1;">
         <label>DOKU Private Key (RSA)</label>
         <textarea name="DOKU_PRIVATE_KEY" rows="6" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px">{{ $values['DOKU_PRIVATE_KEY'] ?? '' }}</textarea>
+        <div class="muted" style="font-size:12px;margin-top:4px;">Wajib diisi untuk Production. Biarkan kosong untuk Sandbox.</div>
       </div>
       <div style="grid-column:1/-1;">
         <label>DOKU Public Key</label>
