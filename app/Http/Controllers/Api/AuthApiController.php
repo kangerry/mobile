@@ -328,6 +328,7 @@ class AuthApiController extends Controller
         if (! $user) {
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
+        // Anggota mengubah profil anggota
         if ($user instanceof Anggota) {
             $payload = $request->validate([
                 'nama_anggota' => ['nullable', 'string', 'max:150'],
@@ -359,6 +360,7 @@ class AuthApiController extends Controller
 
             return $this->profile($request);
         }
+        // Merchant mengubah profil merchant
         if ($user instanceof Merchant) {
             $payload = $request->validate([
                 'nama_toko' => ['nullable', 'string', 'max:150'],
@@ -408,6 +410,89 @@ class AuthApiController extends Controller
         }
 
         return response()->json(['message' => 'Role tidak dikenali'], 422);
+    }
+
+    public function sellerProfile(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        $kopId = (int) ($request->attributes->get('koperasi_id') ?? 0);
+        $merchant = null;
+        if ($user instanceof Merchant) {
+            $merchant = $user;
+        } elseif ($user instanceof Anggota) {
+            $merchant = Merchant::query()
+                ->where('koperasi_id', $kopId)
+                ->where('anggota_id', $user->id)
+                ->first();
+        }
+        if (! $merchant) {
+            return response()->json(['message' => 'Belum ada merchant untuk akun ini'], 404);
+        }
+        return response()->json([
+            'data' => [
+                'id' => $merchant->id,
+                'nama_toko' => $merchant->nama_toko,
+                'deskripsi' => $merchant->deskripsi,
+                'alamat' => $merchant->alamat,
+                'latitude' => $merchant->latitude,
+                'longitude' => $merchant->longitude,
+                'telepon' => $merchant->telepon,
+                'status' => $merchant->status,
+            ],
+        ]);
+    }
+
+    public function updateSellerProfile(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        $kopId = (int) ($request->attributes->get('koperasi_id') ?? 0);
+        $merchant = null;
+        if ($user instanceof Merchant) {
+            $merchant = $user;
+        } elseif ($user instanceof Anggota) {
+            $merchant = Merchant::query()
+                ->where('koperasi_id', $kopId)
+                ->where('anggota_id', $user->id)
+                ->first();
+        }
+        if (! $merchant) {
+            return response()->json(['message' => 'Belum ada merchant untuk akun ini'], 404);
+        }
+        $payload = $request->validate([
+            'nama_toko' => ['nullable', 'string', 'max:150'],
+            'deskripsi' => ['nullable', 'string'],
+            'alamat' => ['nullable', 'string'],
+            'latitude' => ['nullable', 'numeric'],
+            'longitude' => ['nullable', 'numeric'],
+            'telepon' => ['nullable', 'string', 'max:20'],
+        ]);
+        if (isset($payload['nama_toko'])) {
+            $merchant->nama_toko = $payload['nama_toko'];
+        }
+        if (isset($payload['deskripsi'])) {
+            $merchant->deskripsi = $payload['deskripsi'];
+        }
+        if (isset($payload['alamat'])) {
+            $merchant->alamat = $payload['alamat'];
+        }
+        if (isset($payload['latitude'])) {
+            $merchant->latitude = (float) $payload['latitude'];
+        }
+        if (isset($payload['longitude'])) {
+            $merchant->longitude = (float) $payload['longitude'];
+        }
+        if (isset($payload['telepon'])) {
+            $merchant->telepon = $payload['telepon'];
+        }
+        $merchant->save();
+
+        return response()->json(['message' => 'Seller profile updated', 'data' => ['id' => $merchant->id]]);
     }
 
     public function logout(Request $request)

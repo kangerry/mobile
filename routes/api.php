@@ -36,6 +36,8 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
             Route::get('me', [AuthApiController::class, 'me']);
             Route::get('profile', [AuthApiController::class, 'profile']);
             Route::put('profile', [AuthApiController::class, 'updateProfile']);
+            Route::get('seller-profile', [AuthApiController::class, 'sellerProfile'])->middleware([TenantMiddleware::class]);
+            Route::put('seller-profile', [AuthApiController::class, 'updateSellerProfile'])->middleware([TenantMiddleware::class]);
             Route::post('logout', [AuthApiController::class, 'logout']);
             Route::post('register-device-token', [DeviceTokenController::class, 'register']);
             Route::post('apply-seller', [AuthApiController::class, 'applySeller'])->middleware([TenantMiddleware::class, 'anggota.active']);
