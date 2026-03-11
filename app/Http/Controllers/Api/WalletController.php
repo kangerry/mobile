@@ -49,6 +49,10 @@ class WalletController extends BaseController
         if ($koperasiId === '') {
             return response()->json(['message' => 'koperasi_id is required'], 400);
         }
+        $client = new DokuClient;
+        if (! $client->isConfigured($koperasiId)) {
+            return response()->json(['message' => 'Payment gateway DOKU belum dikonfigurasi untuk koperasi ini'], 422);
+        }
         $user = $request->user();
         $anggotaAttr = $request->attributes->get('anggota_profile');
         $anggota = null;
@@ -65,12 +69,11 @@ class WalletController extends BaseController
             return response()->json(['message' => 'Hanya anggota yang dapat topup dompet'], 403);
         }
 
-        $client = new DokuClient;
         $channel = $data['channel'] ?? 'VIRTUAL_ACCOUNT_BRI';
         $amount = (int) $data['amount'];
         $result = $client->createTopupVa($koperasiId, $anggota, $amount, $channel);
         if (! $result) {
-            return response()->json(['message' => 'Gagal membuat VA topup'], 500);
+            return response()->json(['message' => 'Gagal membuat VA topup (gateway error)'], 502);
         }
 
         $trxId = $result['trx_id'];
@@ -132,7 +135,7 @@ class WalletController extends BaseController
             (string) ($trx->external_id ?? '')
         );
         if (! $status) {
-            return response()->json(['message' => 'Gagal cek status'], 500);
+            return response()->json(['message' => 'Gagal cek status ke gateway'], 502);
         }
         $paid = (float) $status['paid_value'];
         $bill = (float) $status['bill_value'];

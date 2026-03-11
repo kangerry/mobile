@@ -36,6 +36,11 @@ class DokuClient
         ];
     }
 
+    public function isConfigured(string $koperasiId): bool
+    {
+        return (bool) $this->resolveSettings($koperasiId);
+    }
+
     protected function getTokenB2B(array $cfg): ?string
     {
         $tokenSvc = new TokenServices;
@@ -87,6 +92,10 @@ class DokuClient
             $vaCtrl = new VaController;
             $resp = $vaCtrl->createVa($req, $cfg['private_key'], $cfg['client_id'], $token, $cfg['secret_key'], $cfg['env']);
         } catch (\Throwable $e) {
+            try {
+                \Log::error('DOKU VA create error', ['message' => $e->getMessage()]);
+            } catch (\Throwable $ignore) {
+            }
             return null;
         }
 

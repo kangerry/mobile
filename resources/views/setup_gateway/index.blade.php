@@ -13,6 +13,16 @@
   {{ session('status') }}
   </div>
 @endif
+@if ($errors->any())
+<div class="alert" style="margin-bottom:12px;background:#fff1f2;border:1px solid #fecdd3;padding:10px;border-radius:8px;color:#991b1b;">
+  <div style="font-weight:700;margin-bottom:6px;">Gagal menyimpan:</div>
+  <ul style="margin:0;padding-left:18px;">
+    @foreach ($errors->all() as $error)
+      <li>{{ $error }}</li>
+    @endforeach
+  </ul>
+</div>
+@endif
 <div class="card">
   <div class="card-title" style="margin-bottom:12px;">Pengaturan Payment Gateway (DOKU)</div>
   <form method="POST" action="{{ route('setup-gateway.store') }}">@csrf
