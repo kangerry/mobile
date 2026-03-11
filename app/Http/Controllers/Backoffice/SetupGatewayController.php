@@ -62,8 +62,8 @@ class SetupGatewayController extends BaseController
             'DOKU_ENV' => 'required|in:sandbox,production',
             'DOKU_CLIENT_ID' => 'required|string',
             'DOKU_SECRET_KEY' => 'required|string',
-            'DOKU_API_KEY' => 'required|string',
-            'DOKU_PRIVATE_KEY' => 'required_if:DOKU_ENV,production|nullable|string',
+            'DOKU_API_KEY' => 'nullable|string',
+            'DOKU_PRIVATE_KEY' => 'nullable|string',
             'DOKU_PUBLIC_KEY' => 'required|string',
             'DOKU_BASE_URL' => 'required|string',
         ]);
@@ -97,6 +97,30 @@ class SetupGatewayController extends BaseController
         }
 
         return redirect()->route('setup-gateway.index', ['kode_koperasi' => $data['kode_koperasi']])->with('status', 'Konfigurasi DOKU tersimpan untuk koperasi '.$data['kode_koperasi']);
+    }
+
+    public function tokenTest(Request $request)
+    {
+        $payload = $request->validate([
+            'kode_koperasi' => 'required|string',
+        ]);
+        $row = DB::table('doku_settings')->where('kode_koperasi', strtoupper(trim($payload['kode_koperasi'])))->first();
+        if (! $row) {
+            return redirect()->back()->with('status', 'Data DOKU untuk koperasi '.$payload['kode_koperasi'].' belum ditemukan');
+        }
+        try {
+            $svc = new \Doku\Snap\Services\TokenServices;
+            $timestamp = $svc->getTimestamp();
+            $signature = $svc->createSignature($row->private_key ?? '', $row->client_id, $timestamp);
+            $req = $svc->createTokenB2BRequestDto($signature, $timestamp, $row->client_id);
+            $env = $row->env === 'production' ? 'true' : 'false';
+            $resp = $svc->createTokenB2B($req, $env);
+            $ok = !empty($resp->accessToken ?? null);
+            $msg = $ok ? 'Token B2B OK (accessToken diterima)' : 'Token B2B GAGAL (accessToken kosong)';
+            return redirect()->back()->with('status', $msg);
+        } catch (\Throwable $e) {
+            return redirect()->back()->with('status', 'Token B2B error: '.$e->getMessage());
+        }
     }
 
     public function dbCheck(Request $request)

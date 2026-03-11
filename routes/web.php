@@ -93,6 +93,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('setup-gateway/test-connection', [SetupGatewayController::class, 'testConnection'])->name('setup-gateway.test');
     Route::post('setup-gateway/advanced-test', [SetupGatewayController::class, 'advancedTest'])->name('setup-gateway.advanced');
     Route::post('setup-gateway/db-check', [SetupGatewayController::class, 'dbCheck'])->name('setup-gateway.dbcheck');
+    Route::post('setup-gateway/token-test', [SetupGatewayController::class, 'tokenTest'])->name('setup-gateway.tokentest');
 
     Route::get('approval-anggota', [ApprovalAnggotaController::class, 'index'])->name('approval-anggota.index');
     Route::post('approval-anggota/{id}/approve', [ApprovalAnggotaController::class, 'approve'])->name('approval-anggota.approve');

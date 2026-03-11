@@ -1,0 +1,11 @@
+openssl_conf = default_conf
+
+[ default_conf ]
+algo_conf = algos
+
+[ algos ]
+rsa = rsa_sect
+
+[ rsa_sect ]
+default_bits = 2048
+default_md = sha256

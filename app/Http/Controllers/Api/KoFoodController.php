@@ -234,8 +234,10 @@ class KoFoodController extends BaseController
                 $envName = $doku->getEnvName((string) $kopId);
                 $allowSim = $doku->allowSandboxSimulation((string) $kopId);
                 if ($envName === 'production' || ($envName === 'sandbox' && ! $allowSim)) {
+                    $detail = is_array($va) ? ($va['error_code'] ?? null).': '.($va['error_message'] ?? '') : null;
                     return response()->json([
-                        'message' => 'Payment Gateway DOKU aktif ('.$envName.'), tetapi VA tidak dapat dibuat. Periksa kredensial di Backoffice.'
+                        'message' => 'Payment Gateway DOKU aktif ('.$envName.'), tetapi VA tidak dapat dibuat. Periksa kredensial di Backoffice.',
+                        'detail' => trim((string) $detail),
                     ], 422);
                 }
                 $payUrl = URL::to('/pg/simulated-checkout?order='.$nomor);

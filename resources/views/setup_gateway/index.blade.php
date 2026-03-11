@@ -37,7 +37,7 @@
           <option value="sandbox" {{ ($values['DOKU_ENV'] ?? '') === 'sandbox' ? 'selected' : '' }}>Sandbox</option>
           <option value="production" {{ ($values['DOKU_ENV'] ?? '') === 'production' ? 'selected' : '' }}>Production</option>
         </select>
-        <div class="muted" style="font-size:12px;margin-top:4px;">Pilih lingkungan yang sedang aktif. Sandbox tidak membutuhkan Private Key; Production wajib memasukkan Private Key.</div>
+        <div class="muted" style="font-size:12px;margin-top:4px;">Pilih lingkungan yang sedang aktif. Integrasi Non‑SNAP tidak memerlukan Private Key di Sandbox maupun Production.</div>
       </div>
       <div>
         <label style="display:flex;align-items:center;gap:8px;">
@@ -61,11 +61,12 @@
       <div style="grid-column:1/-1;">
         <label>DOKU API Key</label>
         <input name="DOKU_API_KEY" value="{{ $values['DOKU_API_KEY'] ?? '' }}" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px">
+        <div class="muted" style="font-size:12px;margin-top:4px;">Opsional. Tidak digunakan untuk Non‑SNAP.</div>
       </div>
       <div style="grid-column:1/-1;">
         <label>DOKU Private Key (RSA)</label>
         <textarea name="DOKU_PRIVATE_KEY" rows="6" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px">{{ $values['DOKU_PRIVATE_KEY'] ?? '' }}</textarea>
-        <div class="muted" style="font-size:12px;margin-top:4px;">Wajib diisi untuk Production. Biarkan kosong untuk Sandbox.</div>
+        <div class="muted" style="font-size:12px;margin-top:4px;">Opsional. Hanya diperlukan untuk alur SNAP. Untuk Non‑SNAP biarkan kosong.</div>
       </div>
       <div style="grid-column:1/-1;">
         <label>DOKU Public Key</label>
@@ -97,6 +98,13 @@
       <i class="fa fa-shield-halved"></i> Advanced Test
     </button>
     <div class="muted">Menguji signature, Authorization, dan validitas Public Key.</div>
+  </form>
+  <form method="POST" action="{{ route('setup-gateway.tokentest') }}" style="margin-top:12px;display:flex;gap:8px;align-items:center;">@csrf
+    <input type="hidden" name="kode_koperasi" value="{{ $values['kode_koperasi'] ?? '' }}">
+    <button class="btn-brand" {{ empty($values['kode_koperasi']) ? 'disabled' : '' }}>
+      <i class="fa fa-key"></i> Token Test (B2B)
+    </button>
+    <div class="muted">Menguji pembuatan Token B2B (khusus SNAP). Abaikan untuk Non‑SNAP.</div>
   </form>
 </div>
 @endsection

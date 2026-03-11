@@ -132,7 +132,9 @@ class WalletController extends BaseController
             (string) $koperasiId,
             (string) ($extra['partner_service_id'] ?? ''),
             (string) ($extra['customer_no'] ?? ''),
-            (string) ($trx->external_id ?? '')
+            (string) ($trx->external_id ?? ''),
+            (string) ($trx->nomor_invoice ?? null),
+            (string) ($trx->nomor_invoice ?? null)
         );
         if (! $status) {
             return response()->json(['message' => 'Gagal cek status ke gateway'], 502);
@@ -158,14 +160,10 @@ class WalletController extends BaseController
 
     public function notifyTopupVa(Request $request)
     {
-        $headers = [
-            'x-client-key' => $request->header('X-CLIENT-KEY') ?? $request->header('x-client-key'),
-            'x-timestamp' => $request->header('X-TIMESTAMP') ?? $request->header('x-timestamp'),
-            'x-signature' => $request->header('X-SIGNATURE') ?? $request->header('x-signature'),
-        ];
-        $clientId = (string) ($headers['x-client-key'] ?? '');
-        $timestamp = (string) ($headers['x-timestamp'] ?? '');
-        $signature = (string) ($headers['x-signature'] ?? '');
+        $clientId = (string) ($request->header('Client-Id') ?? $request->header('X-CLIENT-KEY') ?? '');
+        $requestId = (string) ($request->header('Request-Id') ?? '');
+        $timestamp = (string) ($request->header('Request-Timestamp') ?? $request->header('X-TIMESTAMP') ?? '');
+        $signature = (string) ($request->header('Signature') ?? $request->header('X-SIGNATURE') ?? '');
         if ($clientId === '' || $timestamp === '' || $signature === '') {
             return response()->json(['message' => 'Invalid headers'], 400);
         }
@@ -173,21 +171,36 @@ class WalletController extends BaseController
         if (! $row) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
-        $tokenSvc = new \Doku\Snap\Services\TokenServices;
-        $ok = $tokenSvc->compareSignatures($signature, $timestamp, $clientId, $row->public_key);
-        if (! $ok) {
+        $path = $request->getPathInfo();
+        $bodyRaw = (string) $request->getContent();
+        $digest = base64_encode(hash('sha256', $bodyRaw, true));
+        $rawSig = "Client-Id:{$clientId}\n".
+            "Request-Id:{$requestId}\n".
+            "Request-Timestamp:{$timestamp}\n".
+            "Request-Target:{$path}\n".
+            "Digest:{$digest}";
+        $expected = 'HMACSHA256='.base64_encode(hash_hmac('sha256', $rawSig, (string) $row->secret_key, true));
+        $valid = hash_equals($expected, $signature);
+        if (! $valid) {
+            $tokenSvc = new \Doku\Snap\Services\TokenServices;
+            $valid = $tokenSvc->compareSignatures($signature, $timestamp, $clientId, $row->public_key);
+        }
+        if (! $valid) {
             return response()->json(['message' => 'Invalid signature'], 401);
         }
         $body = $request->json()->all();
-        $va = data_get($body, 'virtualAccountData.virtualAccountNo')
+        $va = data_get($body, 'virtual_account_info.virtual_account_number')
+            ?? data_get($body, 'virtualAccountData.virtualAccountNo')
             ?? data_get($body, 'virtualAccountNo')
             ?? data_get($body, 'body.virtualAccountNo');
+        $status = (string) (data_get($body, 'transaction.status') ?? '');
+        $orderAmt = (float) (data_get($body, 'order.amount') ?? 0);
         $paidValue = (float) (data_get($body, 'virtualAccountData.paidAmount.value')
             ?? data_get($body, 'paidAmount.value')
-            ?? 0);
+            ?? (strcasecmp($status, 'SUCCESS') === 0 ? $orderAmt : 0));
         $billValue = (float) (data_get($body, 'virtualAccountData.billAmount.value')
             ?? data_get($body, 'billAmount.value')
-            ?? 0);
+            ?? $orderAmt);
         if (! $va) {
             return response()->json(['message' => 'Invalid payload'], 400);
         }
@@ -551,7 +564,9 @@ class WalletController extends BaseController
                 (string) $koperasiId,
                 (string) ($extra['partner_service_id'] ?? ''),
                 (string) ($extra['customer_no'] ?? ''),
-                (string) ($trx->external_id ?? '')
+                (string) ($trx->external_id ?? ''),
+                (string) ($trx->nomor_invoice ?? null),
+                (string) ($trx->nomor_invoice ?? null)
             );
             $checked++;
             if (! $status) {
