@@ -2,18 +2,18 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Anggota;
+use App\Models\Merchant;
+use App\Services\DokuClient;
+use App\Services\FcmService;
+use App\Services\FoodOrderService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use App\Models\Anggota;
-use App\Models\Merchant;
-use App\Services\FoodOrderService;
-use App\Services\DokuClient;
-use App\Services\FcmService;
 
 class KoFoodController extends BaseController
 {
@@ -41,6 +41,7 @@ class KoFoodController extends BaseController
         if (! $stream) {
             return response()->json(['message' => 'Cannot read file'], 500);
         }
+
         return response()->stream(function () use ($stream) {
             fpassthru($stream);
             if (is_resource($stream)) {
@@ -53,22 +54,60 @@ class KoFoodController extends BaseController
         ]);
     }
 
+    public function paymentCallback(Request $request)
+    {
+        $raw = (string) $request->getContent();
+        $data = [];
+        try {
+            $data = json_decode($raw, true) ?: [];
+        } catch (\Throwable $e) {
+            $data = [];
+        }
+        $invoice = (string) ($data['order']['invoice_number'] ?? $data['order']['invoiceNumber'] ?? '');
+        if ($invoice === '') {
+            return response()->json(['message' => 'invoice_number missing'], 400);
+        }
+        $status = strtoupper((string) ($data['transaction']['status'] ?? ''));
+        $paid = $status === 'SUCCESS';
+        $order = DB::table('pesanan_makanan')->where('nomor_pesanan', $invoice)->first();
+        if ($order) {
+            if ($paid) {
+                DB::table('pesanan_makanan')->where('id', $order->id)->update([
+                    'status_pembayaran' => 'paid',
+                    'status' => $order->status === 'baru' ? 'diproses' : $order->status,
+                    'updated_at' => now(),
+                ]);
+            }
+            $trx = DB::table('transaksi_gateway')->where('tipe_transaksi', 'KOFOOD_ORDER')->where('nomor_invoice', $invoice)->first();
+            if ($trx) {
+                DB::table('transaksi_gateway')->where('id', $trx->id)->update([
+                    'status' => $paid ? 'PAID' : ($status ?: 'PENDING'),
+                    'response_payload' => json_encode(['callback' => $data]),
+                    'updated_at' => now(),
+                ]);
+            }
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
     public function createOrder(Request $request, FoodOrderService $orders, DokuClient $doku)
     {
         $user = $request->user();
-        if (! $user || ! ($user instanceof Anggota)) {
-            return response()->json(['message' => 'Hanya anggota yang dapat membuat pesanan'], 403);
-        }
         $v = $request->validate([
             'merchant_id' => ['required', 'integer', 'exists:merchant,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', 'exists:produk_makanan,id'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
-            'payment' => ['required', 'string', 'in:cod,dompet,pg'],
+            'payment' => ['required', 'string', 'in:cod,dompet,pg,pg_va,pg_qris'],
+            'payment_sub' => ['nullable', 'string'],
             'alamat_tujuan' => ['required', 'string'],
             'latitude_tujuan' => ['required', 'numeric', 'between:-90,90'],
             'longitude_tujuan' => ['required', 'numeric', 'between:-180,180'],
             'catatan_alamat' => ['nullable', 'string'],
+            'buyer_name' => ['nullable', 'string', 'max:150'],
+            'buyer_email' => ['nullable', 'email'],
+            'buyer_phone' => ['nullable', 'string', 'max:20'],
         ]);
         $kopId = (int) $request->attributes->get('koperasi_id');
         $merchantId = (int) $v['merchant_id'];
@@ -110,19 +149,82 @@ class KoFoodController extends BaseController
         $biayaPlatform = 0.0;
         $total = $subtotal + $ongkir + $biayaPlatform;
         $nomor = 'ORD'.date('ymdHis').Str::upper(Str::random(3));
+        $payMethod = $v['payment'];
+        if ($payMethod === 'pg' || $payMethod === 'pg_checkout') {
+            $payMethod = 'pg_va';
+        }
+        $anggotaId = null;
+        $anggotaStatus = null;
+        $anggotaProfile = null;
+        if ($user instanceof Anggota) {
+            $anggotaId = (int) $user->id;
+            $anggotaStatus = (string) ($user->status ?? null);
+            $anggotaProfile = [
+                'id' => (int) $user->id,
+                'nama' => (string) ($user->nama_anggota ?? ''),
+                'email' => (string) ($user->email ?? ''),
+                'telepon' => (string) ($user->telepon ?? ''),
+            ];
+        } else {
+            $buyerName = (string) ($v['buyer_name'] ?? ($user->name ?? ''));
+            $buyerEmail = strtolower(trim((string) ($v['buyer_email'] ?? ($user->email ?? ''))));
+            $buyerPhone = (string) ($v['buyer_phone'] ?? ($user->telepon ?? ''));
+            if ($buyerEmail === '') {
+                $buyerEmail = 'guest+'.Str::lower(Str::random(6)).'@example.local';
+            }
+            $anggotaRow = DB::table('anggota')
+                ->select('id', 'nama_anggota', 'email', 'telepon', 'status')
+                ->where('koperasi_id', $kopId)
+                ->where('email', $buyerEmail)
+                ->first();
+            if ($anggotaRow) {
+                $anggotaId = (int) $anggotaRow->id;
+                $anggotaStatus = (string) ($anggotaRow->status ?? null);
+                $anggotaProfile = [
+                    'id' => (int) $anggotaRow->id,
+                    'nama' => (string) ($anggotaRow->nama_anggota ?? ''),
+                    'email' => (string) ($anggotaRow->email ?? ''),
+                    'telepon' => (string) ($anggotaRow->telepon ?? ''),
+                ];
+            } else {
+                $newId = DB::table('anggota')->insertGetId([
+                    'koperasi_id' => (int) $kopId,
+                    'nomor_anggota' => 'G'.substr(md5($buyerEmail.microtime(true)), 0, 8),
+                    'nama_anggota' => $buyerName !== '' ? $buyerName : 'Guest',
+                    'email' => $buyerEmail,
+                    'telepon' => $buyerPhone,
+                    'password' => null,
+                    'login_google_id' => null,
+                    'status' => 'pending',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $anggotaId = (int) $newId;
+                $anggotaStatus = 'pending';
+                $anggotaProfile = [
+                    'id' => (int) $newId,
+                    'nama' => $buyerName !== '' ? $buyerName : 'Guest',
+                    'email' => $buyerEmail,
+                    'telepon' => $buyerPhone,
+                ];
+            }
+        }
+        if ($payMethod === 'dompet' && $anggotaStatus !== 'aktif') {
+            return response()->json(['message' => 'Pembayaran Dompet hanya untuk anggota aktif'], 422);
+        }
         $orderData = [
             'koperasi_id' => $kopId,
             'nomor_pesanan' => $nomor,
-            'anggota_id' => (int) $user->id,
+            'anggota_id' => (int) $anggotaId,
             'merchant_id' => $merchantId,
             'tipe_pengiriman' => 'delivery',
             'subtotal' => $subtotal,
             'biaya_pengiriman' => $ongkir,
             'biaya_platform' => $biayaPlatform,
             'total_bayar' => $total,
-            'jenis_pembayaran' => $v['payment'],
-            'status_pembayaran' => $v['payment'] === 'pg' ? 'pending' : ($v['payment'] === 'dompet' ? 'paid' : 'cod'),
-            'referensi_pembayaran' => $v['payment'] === 'pg' ? ('PG-'.Str::upper(Str::random(8))) : null,
+            'jenis_pembayaran' => $payMethod,
+            'status_pembayaran' => in_array($payMethod, ['pg_va', 'pg_qris']) ? 'pending' : ($payMethod === 'dompet' ? 'authorized' : 'cod'),
+            'referensi_pembayaran' => in_array($payMethod, ['pg_va', 'pg_qris']) ? ('PG-'.Str::upper(Str::random(8))) : null,
             'status' => 'baru',
             'created_at' => now(),
             'updated_at' => now(),
@@ -197,68 +299,120 @@ class KoFoodController extends BaseController
             // silently ignore notification errors
         }
         $payUrl = null;
-        if ($v['payment'] === 'pg') {
-            $anggotaProfile = [
-                'id' => (int) $user->id,
-                'nama' => (string) ($user->nama_anggota ?? ''),
-                'email' => (string) ($user->email ?? ''),
-                'telepon' => (string) ($user->telepon ?? ''),
-            ];
-            $va = null;
-            try {
-                $va = $doku->createTopupVa((string) $kopId, $anggotaProfile, (int) round($total), 'VIRTUAL_ACCOUNT_BRI');
-            } catch (\Throwable $e) {
-                $va = null;
-            }
-            if ($va && isset($va['virtual_account_no'])) {
-                $gwId = DB::table('setup_gateway')
-                    ->where('koperasi_id', (int) $kopId)
-                    ->where('status_aktif', true)
-                    ->orderByDesc('id')
-                    ->value('id');
-                if ($gwId) {
-                    try {
-                        DB::table('transaksi_gateway')->insert([
-                            'koperasi_id' => (int) $kopId,
-                            'gateway_id' => (int) $gwId,
-                            'tipe_transaksi' => 'KOFOOD_ORDER',
-                            'referensi_id' => (int) $orderId,
-                            'nomor_invoice' => $nomor,
-                            'external_id' => $va['virtual_account_no'],
-                            'jumlah' => (int) round($total),
-                            'response_payload' => json_encode($va),
-                            'status' => 'PENDING',
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ]);
-                    } catch (\Throwable $e) {
-                    }
+        if (in_array($payMethod, ['pg_va', 'pg_qris', 'pg_checkout'])) {
+            if ($payMethod === 'pg_va') {
+                $checkout = null;
+                try {
+                    $sub = strtoupper((string) $request->input('payment_sub', 'DOKU'));
+                    $checkout = $doku->createCheckoutPayment(
+                        (string) $kopId,
+                        (string) $nomor,
+                        (int) round($total),
+                        $anggotaProfile,
+                        'VA',
+                        $sub
+                    );
+                } catch (\Throwable $e) {
+                    $checkout = ['success' => false, 'error_message' => $e->getMessage()];
                 }
-                DB::table('pesanan_makanan')->where('id', $orderId)->update([
-                    'referensi_pembayaran' => 'VA:'.$va['virtual_account_no'],
-                    'updated_at' => now(),
-                ]);
-                $payUrl = $va['how_to_pay_page'] ?? null;
-            }
-            if (! $payUrl) {
-                $envName = $doku->getEnvName((string) $kopId);
-                $allowSim = $doku->allowSandboxSimulation((string) $kopId);
-                if ($envName === 'production' || ($envName === 'sandbox' && ! $allowSim)) {
-                    $detail = is_array($va) ? ($va['error_code'] ?? null).': '.($va['error_message'] ?? '') : null;
+                if (is_array($checkout) && ($checkout['success'] ?? false)) {
+                    $gwId = DB::table('setup_gateway')
+                        ->where('koperasi_id', (int) $kopId)
+                        ->where('status_aktif', true)
+                        ->orderByDesc('id')
+                        ->value('id');
+                    if ($gwId) {
+                        try {
+                            DB::table('transaksi_gateway')->insert([
+                                'koperasi_id' => (int) $kopId,
+                                'gateway_id' => (int) $gwId,
+                                'tipe_transaksi' => 'KOFOOD_ORDER',
+                                'referensi_id' => (int) $orderId,
+                                'nomor_invoice' => $nomor,
+                                'external_id' => null,
+                                'jumlah' => (int) round($total),
+                                'response_payload' => json_encode($checkout['raw'] ?? []),
+                                'status' => 'PENDING',
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ]);
+                        } catch (\Throwable $e) {
+                        }
+                    }
+                    DB::table('pesanan_makanan')->where('id', $orderId)->update([
+                        'referensi_pembayaran' => 'CHK:DOKU',
+                        'updated_at' => now(),
+                    ]);
+                    $payUrl = (string) ($checkout['payment_url'] ?? '');
+                }
+                if (! $payUrl) {
+                    $envName = $doku->getEnvName((string) $kopId) ?: 'unknown';
+                    $detail = is_array($checkout) ? ($checkout['status'] ?? '').': '.($checkout['error_message'] ?? '') : null;
                     return response()->json([
-                        'message' => 'Payment Gateway DOKU aktif ('.$envName.'), tetapi VA tidak dapat dibuat. Periksa kredensial di Backoffice.',
+                        'message' => 'Payment Gateway DOKU ('.$envName.') tidak mengembalikan URL pembayaran.',
                         'detail' => trim((string) $detail),
                     ], 422);
                 }
-                $payUrl = URL::to('/pg/simulated-checkout?order='.$nomor);
+            } elseif ($payMethod === 'pg_qris') {
+                $checkout = null;
+                try {
+                    $checkout = $doku->createCheckoutPayment(
+                        (string) $kopId,
+                        (string) $nomor,
+                        (int) round($total),
+                        $anggotaProfile,
+                        'QRIS',
+                        null
+                    );
+                } catch (\Throwable $e) {
+                    $checkout = ['success' => false, 'error_message' => $e->getMessage()];
+                }
+                if (is_array($checkout) && ($checkout['success'] ?? false)) {
+                    $gwId = DB::table('setup_gateway')
+                        ->where('koperasi_id', (int) $kopId)
+                        ->where('status_aktif', true)
+                        ->orderByDesc('id')
+                        ->value('id');
+                    if ($gwId) {
+                        try {
+                            DB::table('transaksi_gateway')->insert([
+                                'koperasi_id' => (int) $kopId,
+                                'gateway_id' => (int) $gwId,
+                                'tipe_transaksi' => 'KOFOOD_ORDER',
+                                'referensi_id' => (int) $orderId,
+                                'nomor_invoice' => $nomor,
+                                'external_id' => null,
+                                'jumlah' => (int) round($total),
+                                'response_payload' => json_encode($checkout['raw'] ?? []),
+                                'status' => 'PENDING',
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ]);
+                        } catch (\Throwable $e) {
+                        }
+                    }
+                    DB::table('pesanan_makanan')->where('id', $orderId)->update([
+                        'referensi_pembayaran' => 'CHK:DOKU',
+                        'updated_at' => now(),
+                    ]);
+                    $payUrl = (string) ($checkout['payment_url'] ?? '');
+                }
+                if (! $payUrl) {
+                    $envName = $doku->getEnvName((string) $kopId) ?: 'unknown';
+                    $detail = is_array($checkout) ? ($checkout['status'] ?? '').': '.($checkout['error_message'] ?? '') : null;
+                    return response()->json([
+                        'message' => 'Payment Gateway DOKU ('.$envName.') tidak mengembalikan URL pembayaran QRIS.',
+                        'detail' => trim((string) $detail),
+                    ], 422);
+                }
             }
         }
 
         return response()->json([
             'id' => (int) $orderId,
             'number' => $nomor,
-            'payment' => $v['payment'],
-            'payment_status' => $v['payment'] === 'pg' ? 'pending' : ($v['payment'] === 'dompet' ? 'paid' : 'cod'),
+            'payment' => $payMethod,
+            'payment_status' => in_array($payMethod, ['pg_va', 'pg_qris']) ? 'pending' : ($payMethod === 'dompet' ? 'authorized' : 'cod'),
             'total' => $total,
             'pay_url' => $payUrl,
         ], 201);
@@ -351,6 +505,63 @@ class KoFoodController extends BaseController
         return response()->json(['message' => 'OK']);
     }
 
+    public function rejectSellerOrder(Request $request, $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $merchantId = null;
+        if ($user instanceof Merchant) {
+            $merchantId = (int) $user->id;
+        } elseif ($user instanceof Anggota) {
+            $m = DB::table('merchant')
+                ->where('koperasi_id', $kopId)
+                ->where('anggota_id', (int) $user->id)
+                ->where('status', 'aktif')
+                ->first();
+            if ($m) {
+                $merchantId = (int) $m->id;
+            }
+        }
+        if (! $merchantId) {
+            return response()->json(['message' => 'Hanya seller yang dapat menolak pesanan'], 403);
+        }
+        $order = DB::table('pesanan_makanan')
+            ->where('koperasi_id', $kopId)
+            ->where('merchant_id', $merchantId)
+            ->where('id', (int) $id)
+            ->first();
+        if (! $order || ! in_array($order->status, ['baru', 'diproses'], true)) {
+            return response()->json(['message' => 'Pesanan tidak valid untuk ditolak'], 409);
+        }
+        DB::table('pesanan_makanan')
+            ->where('id', (int) $id)
+            ->update([
+                'status' => 'dibatalkan',
+                'updated_at' => now(),
+                'status_pembayaran' => ($order->status_pembayaran === 'authorized') ? 'void' : $order->status_pembayaran,
+            ]);
+        if ($order->status_pembayaran === 'authorized' && $order->jenis_pembayaran === 'dompet') {
+            $dompetId = DB::table('dompet')->where('koperasi_id', (int) $kopId)->where('anggota_id', (int) $order->anggota_id)->value('id');
+            if ($dompetId) {
+                DB::table('transaksi_dompet')->insert([
+                    'koperasi_id' => (int) $kopId,
+                    'dompet_id' => (int) $dompetId,
+                    'jenis' => 'HOLD_VOID',
+                    'jumlah' => (int) round($order->total_bayar),
+                    'referensi_tipe' => 'pesanan_makanan',
+                    'referensi_id' => (int) $order->id,
+                    'keterangan' => 'Pembatalan pesanan (VOID)',
+                    'created_at' => now(),
+                ]);
+            }
+        }
+
+        return response()->json(['message' => 'Order ditolak']);
+    }
+
     public function categories(Request $request)
     {
         $kopId = (int) $request->header('X-Koperasi-Id');
@@ -360,10 +571,11 @@ class KoFoodController extends BaseController
             ->get()
             ->map(function ($r) use ($kopId) {
                 $img = null;
-                if (!empty($r->gambar)) {
+                if (! empty($r->gambar)) {
                     $path = ltrim($r->gambar, '/');
                     $img = URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.$kopId);
                 }
+
                 return [
                     'id' => (int) $r->id,
                     'name' => $r->nama_kategori,
@@ -415,6 +627,7 @@ class KoFoodController extends BaseController
                         : URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.$kopId);
                 }
             }
+
             return [
                 'id' => (string) $m->id,
                 'name' => $m->nama_toko,
@@ -537,13 +750,25 @@ class KoFoodController extends BaseController
     public function myOrders(Request $request)
     {
         $user = $request->user();
-        if (! $user || ! ($user instanceof Anggota)) {
-            return response()->json(['message' => 'Unauthorized'], 401);
-        }
         $kopId = (int) $request->attributes->get('koperasi_id');
+        $anggotaId = null;
+        if ($user instanceof Anggota) {
+            $anggotaId = (int) $user->id;
+        } else {
+            $email = strtolower(trim((string) ($user->email ?? '')));
+            if ($email !== '') {
+                $row = DB::table('anggota')->where('koperasi_id', $kopId)->where('email', $email)->first();
+                if ($row) {
+                    $anggotaId = (int) $row->id;
+                }
+            }
+        }
+        if (! $anggotaId) {
+            return response()->json(['data' => []]);
+        }
         $items = DB::table('pesanan_makanan')
             ->where('koperasi_id', $kopId)
-            ->where('anggota_id', (int) $user->id)
+            ->where('anggota_id', (int) $anggotaId)
             ->orderByDesc('id')
             ->limit(50)
             ->get()
@@ -564,12 +789,24 @@ class KoFoodController extends BaseController
     public function orderDetail(Request $request, $id)
     {
         $user = $request->user();
-        if (! $user || ! ($user instanceof Anggota)) {
-            return response()->json(['message' => 'Unauthorized'], 401);
-        }
         $kopId = (int) $request->attributes->get('koperasi_id');
         $order = DB::table('pesanan_makanan')->where('koperasi_id', $kopId)->where('id', (int) $id)->first();
-        if (! $order || (int) $order->anggota_id !== (int) $user->id) {
+        if (! $order) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $anggotaId = null;
+        if ($user instanceof Anggota) {
+            $anggotaId = (int) $user->id;
+        } else {
+            $email = strtolower(trim((string) ($user->email ?? '')));
+            if ($email !== '') {
+                $row = DB::table('anggota')->where('koperasi_id', $kopId)->where('email', $email)->first();
+                if ($row) {
+                    $anggotaId = (int) $row->id;
+                }
+            }
+        }
+        if (! $anggotaId || (int) $order->anggota_id !== (int) $anggotaId) {
             return response()->json(['message' => 'Not found'], 404);
         }
         $items = DB::table('detail_pesanan_makanan')->where('pesanan_makanan_id', $order->id)->get()->map(function ($d) {
@@ -611,12 +848,24 @@ class KoFoodController extends BaseController
     public function orderTracking(Request $request, $id)
     {
         $user = $request->user();
-        if (! $user || ! ($user instanceof Anggota)) {
-            return response()->json(['message' => 'Unauthorized'], 401);
-        }
         $kopId = (int) $request->attributes->get('koperasi_id');
         $order = DB::table('pesanan_makanan')->where('koperasi_id', $kopId)->where('id', (int) $id)->first();
-        if (! $order || (int) $order->anggota_id !== (int) $user->id) {
+        if (! $order) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $anggotaId = null;
+        if ($user instanceof Anggota) {
+            $anggotaId = (int) $user->id;
+        } else {
+            $email = strtolower(trim((string) ($user->email ?? '')));
+            if ($email !== '') {
+                $row = DB::table('anggota')->where('koperasi_id', $kopId)->where('email', $email)->first();
+                if ($row) {
+                    $anggotaId = (int) $row->id;
+                }
+            }
+        }
+        if (! $anggotaId || (int) $order->anggota_id !== (int) $anggotaId) {
             return response()->json(['message' => 'Not found'], 404);
         }
         $merchant = DB::table('merchant')->where('id', $order->merchant_id)->first();
@@ -639,6 +888,7 @@ class KoFoodController extends BaseController
             $dLng = deg2rad($bLng - $aLng);
             $aa = sin($dLat / 2) * sin($dLat / 2) + cos(deg2rad($aLat)) * cos(deg2rad($bLat)) * sin($dLng / 2) * sin($dLng / 2);
             $c = 2 * atan2(sqrt($aa), sqrt(1 - $aa));
+
             return max(0.0, $earth * $c);
         };
         $distToDest = $haversine($driverPos['lat'], $driverPos['lng'], $destination['lat'], $destination['lng']);
@@ -739,6 +989,7 @@ class KoFoodController extends BaseController
                     break;
                 }
             }
+
             return [
                 'type' => 'product',
                 'id' => (string) $p->id,

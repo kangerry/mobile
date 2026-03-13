@@ -25,7 +25,6 @@ class SetupGatewayController extends BaseController
             'DOKU_PRIVATE_KEY' => '',
             'DOKU_PUBLIC_KEY' => '',
             'DOKU_BASE_URL' => '',
-            'ALLOW_SANDBOX_SIM' => 1,
         ];
         if ($kode) {
             try {
@@ -40,7 +39,6 @@ class SetupGatewayController extends BaseController
                         'DOKU_PRIVATE_KEY' => $row->private_key ?? '',
                         'DOKU_PUBLIC_KEY' => $row->public_key,
                         'DOKU_BASE_URL' => $row->base_url,
-                        'ALLOW_SANDBOX_SIM' => isset($row->allow_sandbox_simulation) ? (int) $row->allow_sandbox_simulation : 1,
                     ];
                 }
             } catch (\Throwable $e) {
@@ -87,9 +85,7 @@ class SetupGatewayController extends BaseController
         if (Schema::hasColumn('doku_settings', 'private_key')) {
             $payload['private_key'] = $priv;
         }
-        if (Schema::hasColumn('doku_settings', 'allow_sandbox_simulation')) {
-            $payload['allow_sandbox_simulation'] = $request->has('ALLOW_SANDBOX_SIM') ? 1 : 0;
-        }
+        // No simulation option anymore; always require real DOKU checkout
         try {
             DB::table('doku_settings')->updateOrInsert(['kode_koperasi' => $data['kode_koperasi']], $payload);
         } catch (\Throwable $e) {

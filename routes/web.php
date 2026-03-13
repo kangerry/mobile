@@ -78,6 +78,48 @@ Route::get('/pg/simulated-checkout/pay', function (Request $request) {
     return response($html, 200);
 });
 
+Route::get('/pg/checkout/success', function (Request $request) {
+    $nomor = (string) $request->query('order', '');
+    if ($nomor === '') {
+        return response('Order not specified', 400);
+    }
+    DB::table('pesanan_makanan')->where('nomor_pesanan', $nomor)->update([
+        'status_pembayaran' => 'paid',
+        'status' => 'diproses',
+        'updated_at' => now(),
+    ]);
+    $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pembayaran Berhasil</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:2rem;color:#111;text-align:center}</style></head><body><h2>Pembayaran Berhasil</h2><p>Nomor Pesanan '.$nomor.'</p><p>Silakan kembali ke aplikasi untuk melanjutkan.</p></body></html>';
+    return response($html, 200);
+});
+
+Route::get('/pg/checkout/failed', function (Request $request) {
+    $nomor = (string) $request->query('order', '');
+    if ($nomor === '') {
+        return response('Order not specified', 400);
+    }
+    DB::table('pesanan_makanan')->where('nomor_pesanan', $nomor)->update([
+        'status_pembayaran' => 'failed',
+        'status' => 'dibatalkan',
+        'updated_at' => now(),
+    ]);
+    $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pembayaran Gagal</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:2rem;color:#111;text-align:center}</style></head><body><h2>Pembayaran Gagal</h2><p>Nomor Pesanan '.$nomor.'</p><p>Anda dapat menutup halaman ini dan kembali ke aplikasi.</p></body></html>';
+    return response($html, 200);
+});
+
+Route::get('/pg/simulated-qris', function (Request $request) {
+    $nomor = (string) $request->query('order', '');
+    if ($nomor === '') {
+        return response('Order not specified', 400);
+    }
+    $order = DB::table('pesanan_makanan')->where('nomor_pesanan', $nomor)->first();
+    if (! $order) {
+        return response('Order not found', 404);
+    }
+    $total = (float) ($order->total_bayar ?? 0);
+    $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>QRIS (Simulasi)</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:2rem;color:#111} .box{max-width:520px;margin:auto;border:1px solid #e5e7eb;border-radius:12px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.06)} .btn{display:inline-block;background:#059669;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none} .muted{color:#6b7280} .qr{display:flex;align-items:center;justify-content:center;width:300px;height:300px;border:1px dashed #ddd;margin:12px auto;border-radius:8px;background:repeating-linear-gradient(45deg,#f9fafb,#f9fafb 10px,#f3f4f6 10px,#f3f4f6 20px)}</style></head><body><div class="box"><h2>Bayar via QRIS (Simulasi)</h2><p class="muted">Nomor Pesanan</p><h3>'.$nomor.'</h3><p>Total Bayar</p><h3>Rp '.number_format($total, 0, ',', '.').'</h3><div class="qr"><div>QRIS Placeholder</div></div><p>Ini adalah halaman simulasi untuk pengujian. Tekan tombol di bawah untuk menandai pembayaran sukses.</p><p><a class="btn" href="/pg/simulated-checkout/pay?order='.$nomor.'">Tandai Lunas</a></p></div></body></html>';
+    return response($html, 200);
+});
+
 Route::prefix('anggota')->group(function () {
     Route::post('login', [AnggotaSessionController::class, 'login'])->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class]);
     Route::post('logout', [AnggotaSessionController::class, 'logout'])->middleware('auth:anggota')->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class]);

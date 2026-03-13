@@ -13,6 +13,7 @@ Route::prefix('v1/kojek')->middleware([ApiCors::class, TenantMiddleware::class])
         Route::post('driver/location', [DriverApiController::class, 'updateLocation']);
         Route::get('orders/available', [DriverApiController::class, 'availableOrders']);
         Route::get('orders/my/active', [DriverApiController::class, 'myActiveOrder']);
+        Route::get('orders/{id}', [DriverApiController::class, 'orderDetail']);
         Route::get('orders/history', [DriverApiController::class, 'history']);
         Route::post('orders/{id}/accept', [DriverApiController::class, 'acceptOrder']);
         Route::post('orders/{id}/reject', [DriverApiController::class, 'rejectOrder']);

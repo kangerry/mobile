@@ -50,6 +50,8 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
     Route::prefix('wallet')->middleware(['auth:sanctum', TenantMiddleware::class, 'anggota.active'])->group(function () {
         Route::post('topup/va', [WalletController::class, 'createTopupVa']);
         Route::post('topup/va/status', [WalletController::class, 'checkTopupVaStatus']);
+        Route::post('topup/pg', [WalletController::class, 'createTopupPg']);
+        Route::post('topup/pg/status', [WalletController::class, 'checkTopupStatus']);
         Route::post('topup/va/notify/test', [WalletController::class, 'notifyTopupVaTest']);
         Route::post('reconcile', [WalletController::class, 'reconcilePendingTopups']);
         Route::get('balance', [WalletController::class, 'balance']);
@@ -64,6 +66,10 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
     });
 
     Route::post('wallet/topup/va/notify', [WalletController::class, 'notifyTopupVa']);
+    Route::post('wallet/topup/pg/callback', [WalletController::class, 'walletTopupCallback']);
+
+    // Callback untuk DOKU Checkout (HMAC) - tidak memakai TenantMiddleware
+    Route::post('kofood/payment/callback', [KoFoodController::class, 'paymentCallback']);
 
     Route::prefix('kofood')->middleware([TenantMiddleware::class])->group(function () {
         Route::get('product-image', [KoFoodController::class, 'productImage']);
@@ -74,7 +80,7 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
         Route::get('merchants/{id}/products', [KoFoodController::class, 'merchantProducts']);
         Route::get('products/{id}', [KoFoodController::class, 'product']);
     });
-    Route::prefix('kofood')->middleware(['auth:sanctum', TenantMiddleware::class, 'anggota.active'])->group(function () {
+    Route::prefix('kofood')->middleware(['auth:sanctum', TenantMiddleware::class])->group(function () {
         Route::post('orders', [KoFoodController::class, 'createOrder']);
         Route::get('orders/my', [KoFoodController::class, 'myOrders']);
         Route::get('orders/{id}', [KoFoodController::class, 'orderDetail']);
@@ -90,6 +96,7 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
         Route::delete('products/{id}/photos/{photoId}', [SellerProductController::class, 'deletePhoto']);
         Route::get('orders', [KoFoodController::class, 'sellerOrders']);
         Route::post('orders/{id}/process', [KoFoodController::class, 'processSellerOrder']);
+        Route::post('orders/{id}/reject', [KoFoodController::class, 'rejectSellerOrder']);
     });
 
     Route::get('koperasi', [KoperasiController::class, 'index']);

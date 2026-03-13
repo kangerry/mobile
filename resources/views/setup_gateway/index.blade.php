@@ -40,11 +40,9 @@
         <div class="muted" style="font-size:12px;margin-top:4px;">Pilih lingkungan yang sedang aktif. Integrasi Non‑SNAP tidak memerlukan Private Key di Sandbox maupun Production.</div>
       </div>
       <div>
-        <label style="display:flex;align-items:center;gap:8px;">
-          <input type="checkbox" name="ALLOW_SANDBOX_SIM" value="1" {{ (!isset($values['ALLOW_SANDBOX_SIM']) || $values['ALLOW_SANDBOX_SIM']) ? 'checked' : '' }}>
-          Izinkan simulasi di Sandbox
+        <label class="muted" style="font-size:12px;margin-top:4px;display:block;">
+          Integrasi PG wajib mengarah ke DOKU (Sandbox/Production) tanpa simulasi.
         </label>
-        <div class="muted" style="font-size:12px;margin-top:4px;">Jika dimatikan, Sandbox juga tidak akan memakai simulasi; pembuatan VA wajib berhasil ke DOKU.</div>
       </div>
       <div>
         <label>DOKU Base URL</label>

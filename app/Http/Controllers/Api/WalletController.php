@@ -13,6 +13,14 @@ class WalletController extends BaseController
 {
     protected function creditDompet(int $koperasiId, int $anggotaId, int $amount, int $trxGatewayId, string $keterangan = 'Topup VA'): void
     {
+        $existsTxn = DB::table('transaksi_dompet')
+            ->where('koperasi_id', $koperasiId)
+            ->where('referensi_tipe', 'transaksi_gateway')
+            ->where('referensi_id', $trxGatewayId)
+            ->exists();
+        if ($existsTxn) {
+            return;
+        }
         $exists = DB::table('dompet')->where('koperasi_id', $koperasiId)->where('anggota_id', $anggotaId)->first();
         if (! $exists) {
             DB::table('dompet')->insert([
@@ -77,9 +85,31 @@ class WalletController extends BaseController
         }
 
         $trxId = $result['trx_id'];
+        $gwId = DB::table('setup_gateway')
+            ->where('koperasi_id', (int) $koperasiId)
+            ->where('status_aktif', true)
+            ->orderByDesc('id')
+            ->value('id');
+        if (! $gwId) {
+            try {
+                $gwId = DB::table('setup_gateway')->insertGetId([
+                    'koperasi_id' => (int) $koperasiId,
+                    'nama_gateway' => 'DOKU',
+                    'mode' => 'sandbox',
+                    'status_aktif' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+                $gwId = null;
+            }
+        }
+        if (! $gwId) {
+            return response()->json(['message' => 'Setup Gateway belum tersedia untuk koperasi ini'], 422);
+        }
         $tid = DB::table('transaksi_gateway')->insertGetId([
             'koperasi_id' => (int) $koperasiId,
-            'gateway_id' => 0,
+            'gateway_id' => (int) $gwId,
             'tipe_transaksi' => 'TOPUP_DOMPET',
             'referensi_id' => (int) $anggota['id'],
             'nomor_invoice' => $trxId,
@@ -102,6 +132,188 @@ class WalletController extends BaseController
         ]);
     }
 
+    public function createTopupPg(Request $request)
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:1000'],
+            'payment' => ['required', 'string', 'in:pg_va,pg_qris,pg_checkout'],
+            'payment_sub' => ['nullable', 'string', 'max:50'],
+        ]);
+        $koperasiId = (string) $request->attributes->get('koperasi_id', '');
+        if ($koperasiId === '') {
+            return response()->json(['message' => 'koperasi_id is required'], 400);
+        }
+        $client = new DokuClient;
+        if (! $client->isConfigured($koperasiId)) {
+            return response()->json(['message' => 'Payment gateway DOKU belum dikonfigurasi untuk koperasi ini'], 422);
+        }
+        $user = $request->user();
+        if (! ($user instanceof Anggota)) {
+            return response()->json(['message' => 'Hanya anggota yang dapat topup dompet'], 403);
+        }
+        $amount = (int) $data['amount'];
+        $invoice = 'TOPUP'.date('ymdHis').substr((string) microtime(true), -3);
+        $payment = (string) $data['payment'];
+        $sub = (string) ($data['payment_sub'] ?? '');
+        $method = $payment === 'pg_qris' ? 'QRIS' : 'VA';
+        if ($payment === 'pg_checkout') {
+            $method = null;
+        }
+        $customer = [
+            'id' => $user->id,
+            'nama' => $user->nama_anggota,
+            'email' => $user->email,
+            'telepon' => $user->telepon ?? '',
+        ];
+        $checkout = $client->createCheckoutPayment(
+            (string) $koperasiId,
+            (string) $invoice,
+            (int) $amount,
+            (array) $customer,
+            $method,
+            $sub ?: null,
+            null,
+            '/api/v1/wallet/topup/pg/callback'
+        );
+        if (! ($checkout['success'] ?? false)) {
+            return response()->json(['message' => 'Gagal membuat pembayaran (DOKU Checkout): '.($checkout['error_message'] ?? 'unknown')], 422);
+        }
+        $gwId = DB::table('setup_gateway')
+            ->where('koperasi_id', (int) $koperasiId)
+            ->where('status_aktif', true)
+            ->orderByDesc('id')
+            ->value('id');
+        if (! $gwId) {
+            try {
+                $gwId = DB::table('setup_gateway')->insertGetId([
+                    'koperasi_id' => (int) $koperasiId,
+                    'nama_gateway' => 'DOKU',
+                    'mode' => 'sandbox',
+                    'status_aktif' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+                $gwId = null;
+            }
+        }
+        if (! $gwId) {
+            return response()->json(['message' => 'Setup Gateway belum tersedia untuk koperasi ini'], 422);
+        }
+        $tid = DB::table('transaksi_gateway')->insertGetId([
+            'koperasi_id' => (int) $koperasiId,
+            'gateway_id' => (int) $gwId,
+            'tipe_transaksi' => 'TOPUP_DOMPET',
+            'referensi_id' => (int) $user->id,
+            'nomor_invoice' => $invoice,
+            'external_id' => null,
+            'jumlah' => $amount,
+            'response_payload' => json_encode($checkout['raw'] ?? []),
+            'status' => 'PENDING',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        return response()->json([
+            'id' => $tid,
+            'invoice' => $invoice,
+            'payment' => $payment,
+            'amount' => $amount,
+            'pay_url' => (string) ($checkout['payment_url'] ?? ''),
+            'qr_code' => (string) ($checkout['qr_code'] ?? ''),
+            'status' => 'PENDING',
+        ]);
+    }
+
+    public function checkTopupStatus(Request $request)
+    {
+        $payload = $request->validate([
+            'invoice' => ['required', 'string'],
+        ]);
+        $koperasiId = (string) $request->attributes->get('koperasi_id', '');
+        if ($koperasiId === '') {
+            return response()->json(['message' => 'koperasi_id is required'], 400);
+        }
+        $trx = DB::table('transaksi_gateway')
+            ->where('koperasi_id', (int) $koperasiId)
+            ->where('tipe_transaksi', 'TOPUP_DOMPET')
+            ->where('nomor_invoice', $payload['invoice'])
+            ->first();
+        if (! $trx) {
+            return response()->json(['message' => 'Transaksi tidak ditemukan'], 404);
+        }
+        $client = new DokuClient;
+        $status = $client->checkVaStatus(
+            (string) $koperasiId,
+            '',
+            '',
+            '',
+            (string) $trx->nomor_invoice,
+            (string) $trx->nomor_invoice
+        );
+        if (! $status) {
+            return response()->json(['message' => 'Gagal cek status ke gateway'], 502);
+        }
+        $paid = (float) $status['paid_value'];
+        $bill = (float) $status['bill_value'];
+        $isPaid = $paid > 0 && $paid >= $bill;
+        $alreadyCredited = DB::table('transaksi_dompet')
+            ->where('koperasi_id', (int) $koperasiId)
+            ->where('referensi_tipe', 'transaksi_gateway')
+            ->where('referensi_id', (int) $trx->id)
+            ->exists();
+        if ($isPaid && ! $alreadyCredited) {
+            $this->creditDompet((int) $koperasiId, (int) $trx->referensi_id, (int) $trx->jumlah, (int) $trx->id, 'Topup berhasil (checkout)');
+        }
+        if ($isPaid && $trx->status !== 'PAID') {
+            DB::table('transaksi_gateway')->where('id', $trx->id)->update(['status' => 'PAID', 'updated_at' => now()]);
+        }
+        $currentSaldo = (float) DB::table('dompet')->where('koperasi_id', (int) $koperasiId)->where('anggota_id', (int) $trx->referensi_id)->value('saldo') ?: 0;
+        return response()->json([
+            'status' => $isPaid ? 'PAID' : 'UNPAID',
+            'paid' => $paid,
+            'bill' => $bill,
+            'saldo' => $currentSaldo,
+        ]);
+    }
+
+    public function walletTopupCallback(Request $request)
+    {
+        $raw = (string) $request->getContent();
+        $data = [];
+        try {
+            $data = json_decode($raw, true) ?: [];
+        } catch (\Throwable $e) {
+            $data = [];
+        }
+        $invoice = (string) ($data['order']['invoice_number'] ?? $data['order']['invoiceNumber'] ?? '');
+        if ($invoice === '') {
+            return response()->json(['message' => 'invoice_number missing'], 400);
+        }
+        $status = strtoupper((string) ($data['transaction']['status'] ?? ''));
+        $paid = $status === 'SUCCESS';
+        $trx = DB::table('transaksi_gateway')
+            ->where('tipe_transaksi', 'TOPUP_DOMPET')
+            ->where('nomor_invoice', $invoice)
+            ->first();
+        if ($trx) {
+            $kopId = (int) $trx->koperasi_id;
+            $alreadyCredited = DB::table('transaksi_dompet')
+                ->where('koperasi_id', $kopId)
+                ->where('referensi_tipe', 'transaksi_gateway')
+                ->where('referensi_id', (int) $trx->id)
+                ->exists();
+            if ($paid && ! $alreadyCredited) {
+                $this->creditDompet($kopId, (int) $trx->referensi_id, (int) $trx->jumlah, (int) $trx->id, 'Topup berhasil (callback)');
+            }
+            if ($trx->status !== 'PAID' && $paid) {
+                DB::table('transaksi_gateway')->where('id', $trx->id)->update([
+                    'status' => 'PAID',
+                    'updated_at' => now(),
+                ]);
+            }
+        }
+        return response()->json(['ok' => true]);
+    }
     public function checkTopupVaStatus(Request $request)
     {
         $payload = $request->validate([
@@ -142,19 +354,24 @@ class WalletController extends BaseController
         $paid = (float) $status['paid_value'];
         $bill = (float) $status['bill_value'];
         $isPaid = $paid > 0 && $paid >= $bill;
-        if ($isPaid && $trx->status !== 'PAID') {
+        $alreadyCredited = DB::table('transaksi_dompet')
+            ->where('koperasi_id', (int) $koperasiId)
+            ->where('referensi_tipe', 'transaksi_gateway')
+            ->where('referensi_id', (int) $trx->id)
+            ->exists();
+        if ($isPaid && ! $alreadyCredited) {
             $this->creditDompet((int) $koperasiId, (int) $trx->referensi_id, (int) $trx->jumlah, (int) $trx->id, 'Topup VA berhasil');
-            DB::table('transaksi_gateway')->where('id', $trx->id)->update([
-                'status' => 'PAID',
-                'response_payload' => json_encode(['check' => $status, 'original' => $extra]),
-                'updated_at' => now(),
-            ]);
+        }
+        if ($isPaid && $trx->status !== 'PAID') {
+            DB::table('transaksi_gateway')->where('id', $trx->id)->update(['status' => 'PAID', 'updated_at' => now()]);
         }
 
+        $currentSaldo = (float) DB::table('dompet')->where('koperasi_id', (int) $koperasiId)->where('anggota_id', (int) $trx->referensi_id)->value('saldo') ?: 0;
         return response()->json([
             'status' => $isPaid ? 'PAID' : 'UNPAID',
             'paid' => $paid,
             'bill' => $bill,
+            'saldo' => $currentSaldo,
         ]);
     }
 
@@ -305,7 +522,7 @@ class WalletController extends BaseController
         $koperasiId = (string) $request->attributes->get('koperasi_id', '');
         $saldo = DB::table('dompet')->where('koperasi_id', (int) $koperasiId)->where('anggota_id', $anggotaId)->value('saldo');
 
-        return response()->json(['saldo' => (float) ($saldo ?? 0)]);
+        return response()->json(['saldo' => (float) ($saldo ?? 0)])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
     public function transactions(Request $request)

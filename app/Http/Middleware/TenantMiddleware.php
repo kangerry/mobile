@@ -16,6 +16,9 @@ class TenantMiddleware
         if ($request->getMethod() === 'OPTIONS') {
             return $next($request);
         }
+        if ($request->is('api/v1/health-check') || $request->is('api/v1/public-config') || $request->is('api/v1/wallet/topup/va/notify')) {
+            return $next($request);
+        }
 
         $koperasiId = $request->header('X-Koperasi-Id') ?? $request->query('koperasi_id');
         if (empty($koperasiId)) {
