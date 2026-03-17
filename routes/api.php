@@ -85,6 +85,8 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
         Route::get('orders/my', [KoFoodController::class, 'myOrders']);
         Route::get('orders/{id}', [KoFoodController::class, 'orderDetail']);
         Route::get('orders/{id}/tracking', [KoFoodController::class, 'orderTracking']);
+        Route::get('orders/{id}/chat', [KoFoodController::class, 'listChat']);
+        Route::post('orders/{id}/chat', [KoFoodController::class, 'sendChat']);
     });
 
     Route::prefix('seller')->middleware(['auth:sanctum', TenantMiddleware::class])->group(function () {
@@ -95,6 +97,7 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
         Route::get('products/{id}/photos', [SellerProductController::class, 'listPhotos']);
         Route::delete('products/{id}/photos/{photoId}', [SellerProductController::class, 'deletePhoto']);
         Route::get('orders', [KoFoodController::class, 'sellerOrders']);
+        Route::get('orders/{id}', [KoFoodController::class, 'sellerOrderDetail']);
         Route::post('orders/{id}/process', [KoFoodController::class, 'processSellerOrder']);
         Route::post('orders/{id}/reject', [KoFoodController::class, 'rejectSellerOrder']);
     });

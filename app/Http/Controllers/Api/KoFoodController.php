@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Anggota;
 use App\Models\Merchant;
+use App\Models\Driver;
 use App\Services\DokuClient;
 use App\Services\FcmService;
 use App\Services\FoodOrderService;
@@ -466,6 +467,275 @@ class KoFoodController extends BaseController
         return response()->json(['data' => $items]);
     }
 
+    public function sellerOrderDetail(Request $request, $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $merchantId = null;
+        if ($user instanceof Merchant) {
+            $merchantId = (int) $user->id;
+        } elseif ($user instanceof Anggota) {
+            $m = DB::table('merchant')
+                ->where('koperasi_id', $kopId)
+                ->where('anggota_id', (int) $user->id)
+                ->where('status', 'aktif')
+                ->first();
+            if ($m) {
+                $merchantId = (int) $m->id;
+            }
+        }
+        if (! $merchantId) {
+            return response()->json(['message' => 'Hanya seller yang dapat melihat pesanan'], 403);
+        }
+        $order = DB::table('pesanan_makanan')
+            ->where('koperasi_id', $kopId)
+            ->where('merchant_id', $merchantId)
+            ->where('id', (int) $id)
+            ->first();
+        if (! $order) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $itemsRaw = DB::table('detail_pesanan_makanan')
+            ->join('produk_makanan', 'detail_pesanan_makanan.produk_id', '=', 'produk_makanan.id')
+            ->leftJoin('produk_foto', function ($j) {
+                $j->on('produk_foto.produk_id', '=', 'produk_makanan.id');
+            })
+            ->where('detail_pesanan_makanan.pesanan_makanan_id', (int) $order->id)
+            ->select(
+                'detail_pesanan_makanan.produk_id',
+                'detail_pesanan_makanan.jumlah',
+                'detail_pesanan_makanan.harga_satuan',
+                'detail_pesanan_makanan.subtotal',
+                'produk_makanan.nama_produk',
+                'produk_foto.url_foto'
+            )
+            ->orderBy('produk_foto.urutan')
+            ->get()
+            ->groupBy('produk_id');
+        $merchantBanner = null;
+        $mRow = DB::table('merchant')->where('id', (int) $order->merchant_id)->first();
+        if ($mRow && ! empty($mRow->banner)) {
+            $path = ltrim($mRow->banner, '/');
+            $merchantBanner = URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.$kopId);
+        }
+        $items = collect($itemsRaw)->map(function ($rows, $pid) use ($kopId, $merchantBanner) {
+            $r = $rows[0];
+            $img = null;
+            foreach ($rows as $rr) {
+                $path = trim((string) ($rr->url_foto ?? ''));
+                if ($path !== '') {
+                    $img = Str::startsWith($path, ['http://', 'https://'])
+                        ? $path
+                        : URL::to('/api/v1/kofood/product-image?path='.rawurlencode($path).'&koperasi_id='.$kopId);
+                    break;
+                }
+            }
+            if ($img === null) {
+                $img = $merchantBanner;
+            }
+            return [
+                'product_id' => (int) $r->produk_id,
+                'name' => (string) $r->nama_produk,
+                'qty' => (int) $r->jumlah,
+                'price' => (float) $r->harga_satuan,
+                'subtotal' => (float) $r->subtotal,
+                'imageUrl' => $img,
+            ];
+        })->values();
+        $data = [
+            'id' => (int) $order->id,
+            'number' => $order->nomor_pesanan,
+            'status' => $order->status,
+            'payment_status' => $order->status_pembayaran,
+            'subtotal' => (float) $order->subtotal,
+            'delivery_fee' => (float) $order->biaya_pengiriman,
+            'platform_fee' => (float) $order->biaya_platform,
+            'total' => (float) $order->total_bayar,
+            'items' => $items,
+            'destination' => [
+                'address' => (string) ($order->alamat_tujuan ?? ''),
+                'latitude' => (float) ($order->latitude_tujuan ?? 0),
+                'longitude' => (float) ($order->longitude_tujuan ?? 0),
+            ],
+            'created_at' => $order->created_at,
+        ];
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function listChat(Request $request, $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $order = DB::table('pesanan_makanan')->where('koperasi_id', $kopId)->where('id', (int) $id)->first();
+        if (! $order) {
+            return response()->json(['data' => []]);
+        }
+        $isParticipant = false;
+        if ($user instanceof Anggota) {
+            $isParticipant = (int) $order->anggota_id === (int) $user->id;
+        } elseif ($user instanceof Merchant) {
+            $isParticipant = (int) $order->merchant_id === (int) $user->id;
+        } elseif ($user instanceof Driver) {
+            $isParticipant = (int) $order->driver_id === (int) $user->id;
+        }
+        if (! $isParticipant) {
+            // Cek jika user adalah anggota pemilik merchant
+            if ($user instanceof Anggota) {
+                $m = DB::table('merchant')->where('id', (int) $order->merchant_id)->first();
+                if ($m && (int) $m->anggota_id === (int) $user->id) {
+                    $isParticipant = true;
+                }
+            }
+        }
+        if (! $isParticipant) {
+            return response()->json(['data' => []]);
+        }
+        $rows = DB::table('pesanan_chat')
+            ->where('koperasi_id', $kopId)
+            ->where('pesanan_id', (int) $id)
+            ->orderBy('id')
+            ->limit(500)
+            ->get()
+            ->map(function ($r) {
+                return [
+                    'id' => (int) $r->id,
+                    'sender_type' => (string) $r->sender_type,
+                    'sender_id' => (int) $r->sender_id,
+                    'message' => (string) ($r->message ?? ''),
+                    'image_url' => $r->image_url ?: null,
+                    'created_at' => (string) $r->created_at,
+                ];
+            });
+        return response()->json(['data' => $rows]);
+    }
+
+    public function sendChat(Request $request, $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        $v = $request->validate([
+            'message' => ['nullable', 'string'],
+            'image_url' => ['nullable', 'string'],
+        ]);
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $order = DB::table('pesanan_makanan')->where('koperasi_id', $kopId)->where('id', (int) $id)->first();
+        if (! $order) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $senderType = null;
+        $senderId = null;
+        if ($user instanceof Anggota) {
+            if ((int) $order->anggota_id === (int) $user->id) {
+                $senderType = 'anggota';
+                $senderId = (int) $user->id;
+            } else {
+                $m = DB::table('merchant')->where('id', (int) $order->merchant_id)->first();
+                if ($m && (int) $m->anggota_id === (int) $user->id) {
+                    $senderType = 'merchant';
+                    $senderId = (int) $m->id;
+                }
+            }
+        } elseif ($user instanceof Merchant) {
+            if ((int) $order->merchant_id === (int) $user->id) {
+                $senderType = 'merchant';
+                $senderId = (int) $user->id;
+            }
+        } elseif ($user instanceof Driver) {
+            if ((int) $order->driver_id === (int) $user->id) {
+                $senderType = 'driver';
+                $senderId = (int) $user->id;
+            }
+        }
+        if (! $senderType || ! $senderId) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+        $msg = trim((string) ($v['message'] ?? ''));
+        $imgUrl = $v['image_url'] ?? null;
+        if ($msg === '' && empty($imgUrl)) {
+            return response()->json(['message' => 'Pesan kosong'], 422);
+        }
+        DB::table('pesanan_chat')->insert([
+            'koperasi_id' => $kopId,
+            'pesanan_id' => (int) $order->id,
+            'sender_type' => $senderType,
+            'sender_id' => (int) $senderId,
+            'message' => $msg !== '' ? $msg : null,
+            'image_url' => $imgUrl ?: null,
+            'created_at' => now(),
+        ]);
+        // Kirim push ke peserta lain
+        try {
+            $anggotaId = (int) $order->anggota_id;
+            $merchant = DB::table('merchant')->where('id', (int) $order->merchant_id)->first();
+            $merchantOwnerId = $merchant ? (int) $merchant->anggota_id : null;
+            $fcmTargets = [];
+            $osTargets = [];
+            $targetAnggota = [];
+            if ($senderType !== 'anggota') {
+                $targetAnggota[] = $anggotaId;
+            }
+            if ($merchantOwnerId && $senderType !== 'merchant') {
+                $targetAnggota[] = $merchantOwnerId;
+            }
+            if (! empty($targetAnggota)) {
+                $fcmTargets = DB::table('anggota_device_tokens')
+                    ->whereIn('anggota_id', $targetAnggota)
+                    ->where(function ($q) {
+                        $q->whereNull('platform')->orWhere('platform', '!=', 'onesignal');
+                    })
+                    ->pluck('token')->filter()->unique()->values()->all();
+                $osTargets = DB::table('anggota_device_tokens')
+                    ->whereIn('anggota_id', $targetAnggota)
+                    ->where('platform', 'onesignal')
+                    ->pluck('token')->filter()->unique()->values()->all();
+            }
+            $driverOs = [];
+            $driverFcm = [];
+            if ($order->driver_id && $senderType !== 'driver') {
+                $driverOs = DB::table('driver_device_tokens')
+                    ->where('driver_id', (int) $order->driver_id)
+                    ->where('platform', 'onesignal')
+                    ->pluck('token')->filter()->unique()->values()->all();
+                $driverFcm = DB::table('driver_device_tokens')
+                    ->where('driver_id', (int) $order->driver_id)
+                    ->where(function ($q) {
+                        $q->whereNull('platform')->orWhere('platform', '!=', 'onesignal');
+                    })
+                    ->pluck('token')->filter()->unique()->values()->all();
+            }
+            $title = 'Pesan Baru';
+            $body = $msg !== '' ? $msg : 'Pesan baru untuk pesanan '.$order->nomor_pesanan;
+            $data = [
+                'type' => 'kofood_chat',
+                'order_id' => (string) $order->id,
+                'number' => (string) $order->nomor_pesanan,
+                'from' => $senderType,
+            ];
+            if (! empty($fcmTargets)) {
+                (new FcmService)->sendToTokens($fcmTargets, $title, $body, $data);
+            }
+            if (! empty($osTargets)) {
+                (new \App\Services\OneSignalService)->sendToPlayerIds($osTargets, $title, $body, $data);
+            }
+            if (! empty($driverFcm)) {
+                (new FcmService)->sendToTokens($driverFcm, $title, $body, $data);
+            }
+            if (! empty($driverOs)) {
+                (new \App\Services\OneSignalService)->sendToPlayerIds($driverOs, $title, $body, $data);
+            }
+        } catch (\Throwable $e) {
+        }
+        return response()->json(['message' => 'OK']);
+    }
     public function processSellerOrder(Request $request, $id)
     {
         $user = $request->user();

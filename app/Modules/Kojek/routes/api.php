@@ -11,6 +11,7 @@ Route::prefix('v1/kojek')->middleware([ApiCors::class, TenantMiddleware::class])
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('online', [DriverApiController::class, 'setOnline']);
         Route::post('driver/location', [DriverApiController::class, 'updateLocation']);
+        Route::post('register-device-token', [\App\Http\Controllers\Api\DeviceTokenController::class, 'registerDriver']);
         Route::get('orders/available', [DriverApiController::class, 'availableOrders']);
         Route::get('orders/my/active', [DriverApiController::class, 'myActiveOrder']);
         Route::get('orders/{id}', [DriverApiController::class, 'orderDetail']);
