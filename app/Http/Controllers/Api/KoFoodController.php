@@ -92,6 +92,176 @@ class KoFoodController extends BaseController
         return response()->json(['ok' => true]);
     }
 
+    public function rideFare(Request $request, FoodOrderService $orders, RideOrderService $ride)
+    {
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $oLat = (float) $request->query('origin_lat', 0);
+        $oLng = (float) $request->query('origin_lng', 0);
+        $dLat = (float) $request->query('dest_lat', 0);
+        $dLng = (float) $request->query('dest_lng', 0);
+        $earth = 6371.0;
+        $dLatRad = deg2rad($dLat - $oLat);
+        $dLngRad = deg2rad($dLng - $oLng);
+        $a = sin($dLatRad / 2) * sin($dLatRad / 2) + cos(deg2rad($oLat)) * cos(deg2rad($dLat)) * sin($dLngRad / 2) * sin($dLngRad / 2);
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        $km = max(0.0, $earth * $c);
+        $fare = $ride->calculateFare($km, $kopId);
+        return response()->json(['km' => $km, 'fare' => $fare]);
+    }
+
+    public function createRideOrder(Request $request, RideOrderService $ride)
+    {
+        $user = $request->user();
+        $v = $request->validate([
+            'alamat_jemput' => ['nullable', 'string'],
+            'origin_lat' => ['required', 'numeric', 'between:-90,90'],
+            'origin_lng' => ['required', 'numeric', 'between:-180,180'],
+            'alamat_tujuan' => ['nullable', 'string'],
+            'dest_lat' => ['required', 'numeric', 'between:-90,90'],
+            'dest_lng' => ['required', 'numeric', 'between:-180,180'],
+            'payment' => ['required', 'string', 'in:cod,dompet,pg_va,pg_qris'],
+        ]);
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $anggotaId = null;
+        if ($user instanceof Anggota) {
+            $anggotaId = (int) $user->id;
+        } else {
+            $email = strtolower(trim((string) ($user->email ?? '')));
+            if ($email !== '') {
+                $row = DB::table('anggota')->where('koperasi_id', $kopId)->where('email', $email)->first();
+                if ($row) {
+                    $anggotaId = (int) $row->id;
+                }
+            }
+        }
+        if (! $anggotaId) {
+            return response()->json(['message' => 'Hanya anggota yang dapat membuat order OJEK'], 403);
+        }
+        $oLat = (float) $v['origin_lat'];
+        $oLng = (float) $v['origin_lng'];
+        $dLat = (float) $v['dest_lat'];
+        $dLng = (float) $v['dest_lng'];
+        $earth = 6371.0;
+        $dLatRad = deg2rad($dLat - $oLat);
+        $dLngRad = deg2rad($dLng - $oLng);
+        $a = sin($dLatRad / 2) * sin($dLatRad / 2) + cos(deg2rad($oLat)) * cos(deg2rad($dLat)) * sin($dLngRad / 2) * sin($dLngRad / 2);
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        $km = max(0.0, $earth * $c);
+        $fare = $ride->calculateFare($km, $kopId);
+        $biayaPlatform = 0.0;
+        $total = $fare + $biayaPlatform;
+        $nomor = 'RIDE'.date('ymdHis').Str::upper(Str::random(3));
+        $payMethod = $v['payment'];
+        $statusBayar = in_array($payMethod, ['pg_va', 'pg_qris']) ? 'pending' : ($payMethod === 'dompet' ? 'authorized' : 'cod');
+        $orderId = DB::table('pesanan_ojek')->insertGetId([
+            'koperasi_id' => $kopId,
+            'nomor_pesanan' => $nomor,
+            'anggota_id' => (int) $anggotaId,
+            'alamat_jemput' => (string) ($v['alamat_jemput'] ?? ''),
+            'latitude_jemput' => $oLat,
+            'longitude_jemput' => $oLng,
+            'alamat_tujuan' => (string) ($v['alamat_tujuan'] ?? ''),
+            'latitude_tujuan' => $dLat,
+            'longitude_tujuan' => $dLng,
+            'jarak_km' => $km,
+            'biaya_dasar' => 0,
+            'biaya_jarak' => $fare,
+            'biaya_platform' => $biayaPlatform,
+            'total_bayar' => $total,
+            'jenis_pembayaran' => $payMethod,
+            'status_pembayaran' => $statusBayar,
+            'status' => 'baru',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        return response()->json([
+            'id' => (int) $orderId,
+            'number' => $nomor,
+            'payment' => $payMethod,
+            'payment_status' => $statusBayar,
+            'total' => $total,
+        ], 201);
+    }
+
+    public function myRideOrders(Request $request)
+    {
+        $user = $request->user();
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $anggotaId = null;
+        if ($user instanceof Anggota) {
+            $anggotaId = (int) $user->id;
+        } else {
+            $email = strtolower(trim((string) ($user->email ?? '')));
+            if ($email !== '') {
+                $row = DB::table('anggota')->where('koperasi_id', $kopId)->where('email', $email)->first();
+                if ($row) {
+                    $anggotaId = (int) $row->id;
+                }
+            }
+        }
+        if (! $anggotaId) {
+            return response()->json(['data' => []]);
+        }
+        $items = DB::table('pesanan_ojek')
+            ->where('koperasi_id', $kopId)
+            ->where('anggota_id', (int) $anggotaId)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(function ($r) {
+                return [
+                    'id' => (int) $r->id,
+                    'number' => $r->nomor_pesanan,
+                    'status' => $r->status,
+                    'payment_status' => $r->status_pembayaran,
+                    'total' => (float) $r->total_bayar,
+                    'created_at' => $r->created_at,
+                ];
+            });
+        return response()->json(['data' => $items]);
+    }
+
+    public function rideTracking(Request $request, $id)
+    {
+        $kopId = (int) $request->attributes->get('koperasi_id');
+        $order = DB::table('pesanan_ojek')->where('koperasi_id', $kopId)->where('id', (int) $id)->first();
+        if (! $order) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $driver = $order->driver_id ? DB::table('driver')->where('id', $order->driver_id)->first() : null;
+        $origin = ['lat' => (float) ($order->latitude_jemput ?? 0), 'lng' => (float) ($order->longitude_jemput ?? 0)];
+        $destination = ['lat' => (float) ($order->latitude_tujuan ?? 0), 'lng' => (float) ($order->longitude_tujuan ?? 0)];
+        $driverPos = [
+            'lat' => (float) ($driver && isset($driver->latitude_terakhir) ? $driver->latitude_terakhir : $origin['lat']),
+            'lng' => (float) ($driver && isset($driver->longitude_terakhir) ? $driver->longitude_terakhir : $origin['lng']),
+        ];
+        $haversine = function ($aLat, $aLng, $bLat, $bLng) {
+            $earth = 6371.0;
+            $dLat = deg2rad($bLat - $aLat);
+            $dLng = deg2rad($bLng - $aLng);
+            $aa = sin($dLat / 2) * sin($dLat / 2) + cos(deg2rad($aLat)) * cos(deg2rad($bLat)) * sin($dLng / 2) * sin($dLng / 2);
+            $c = 2 * atan2(sqrt($aa), sqrt(1 - $aa));
+            return max(0.0, $earth * $c);
+        };
+        $distToDest = $haversine($driverPos['lat'], $driverPos['lng'], $destination['lat'], $destination['lng']);
+        $etaMinutes = (int) round(($distToDest / 30.0) * 60.0);
+        $etaMinutes = max(3, min(60, $etaMinutes));
+        return response()->json([
+            'data' => [
+                'status' => $order->status,
+                'origin' => $origin,
+                'destination' => $destination,
+                'driver' => [
+                    'lat' => $driverPos['lat'],
+                    'lng' => $driverPos['lng'],
+                    'name' => $driver && isset($driver->nama_driver) ? $driver->nama_driver : 'Driver',
+                    'plate' => $driver && isset($driver->plat_nomor) ? $driver->plat_nomor : '',
+                ],
+                'eta_minutes' => $etaMinutes,
+                'updated_at' => now()->toIso8601String(),
+            ],
+        ]);
+    }
     public function createOrder(Request $request, FoodOrderService $orders, DokuClient $doku)
     {
         $user = $request->user();
@@ -242,6 +412,9 @@ class KoFoodController extends BaseController
         if (Schema::hasColumn('pesanan_makanan', 'catatan_alamat') && isset($v['catatan_alamat'])) {
             $orderData['catatan_alamat'] = (string) $v['catatan_alamat'];
         }
+        $expireMinutes = (int) env('KOFOOD_DRIVER_OFFER_EXPIRE_MINUTES', 3);
+        $orderData['offer_expires_at'] = now()->addMinutes($expireMinutes);
+        $orderData['offer_round'] = 1;
         $orderId = DB::table('pesanan_makanan')->insertGetId($orderData);
         foreach ($v['items'] as $it) {
             $pid = (int) $it['product_id'];
@@ -255,49 +428,62 @@ class KoFoodController extends BaseController
                 'subtotal' => $harga * $qty,
             ]);
         }
-        // Notify seller (merchant owner)
+        // Notify drivers first (offer)
         try {
-            $merchantOwnerId = ($merchantRow && isset($merchantRow->anggota_id)) ? (int) $merchantRow->anggota_id : null;
-            if (! empty($merchantOwnerId)) {
-                // FCM tokens
-                $fcmTokens = DB::table('anggota_device_tokens')
-                    ->where('anggota_id', $merchantOwnerId)
+            $pickupLat = isset($merchantRow->latitude) ? (float) $merchantRow->latitude : 0.0;
+            $pickupLng = isset($merchantRow->longitude) ? (float) $merchantRow->longitude : 0.0;
+            $drivers = DB::table('driver')
+                ->where('koperasi_id', $kopId)
+                ->where('terverifikasi', true)
+                ->where('status_online', true)
+                ->select('id', 'nama_driver', 'latitude_terakhir', 'longitude_terakhir')
+                ->get()
+                ->map(function ($d) use ($pickupLat, $pickupLng) {
+                    $earth = 6371.0;
+                    $dLat = deg2rad(((float) ($d->latitude_terakhir ?? 0)) - $pickupLat);
+                    $dLng = deg2rad(((float) ($d->longitude_terakhir ?? 0)) - $pickupLng);
+                    $a = sin($dLat / 2) * sin($dLat / 2) + cos(deg2rad($pickupLat)) * cos(deg2rad((float) ($d->latitude_terakhir ?? 0))) * sin($dLng / 2) * sin($dLng / 2);
+                    $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+                    $dist = max(0.0, $earth * $c);
+                    return ['id' => (int) $d->id, 'dist' => $dist];
+                })
+                ->sortBy('dist')
+                ->values()
+                ->take((int) env('KOFOOD_DRIVER_OFFER_TOP_N', 8)); // kirim ke N driver terdekat
+            if ($drivers->isNotEmpty()) {
+                $driverIds = array_map(fn ($x) => (int) $x['id'], $drivers->all());
+                $driverFcm = DB::table('driver_device_tokens')
+                    ->whereIn('driver_id', $driverIds)
                     ->where(function ($q) {
                         $q->whereNull('platform')->orWhere('platform', '!=', 'onesignal');
                     })
-                    ->pluck('token')
-                    ->filter()
-                    ->unique()
-                    ->values()
-                    ->all();
-                // OneSignal Player IDs
-                $oneSignalIds = DB::table('anggota_device_tokens')
-                    ->where('anggota_id', $merchantOwnerId)
+                    ->pluck('token')->filter()->unique()->values()->all();
+                $driverOs = DB::table('driver_device_tokens')
+                    ->whereIn('driver_id', $driverIds)
                     ->where('platform', 'onesignal')
-                    ->pluck('token')
-                    ->filter()
-                    ->unique()
-                    ->values()
-                    ->all();
-                if (! empty($fcmTokens) || ! empty($oneSignalIds)) {
-                    $title = 'Pesanan Baru';
-                    $totalText = number_format((float) $total, 0, ',', '.');
-                    $body = $nomor.' • Total Rp '.$totalText;
-                    $data = [
-                        'type' => 'kofood_order_new',
-                        'order_id' => (string) $orderId,
-                        'number' => (string) $nomor,
-                    ];
-                    if (! empty($fcmTokens)) {
-                        (new FcmService)->sendToTokens($fcmTokens, $title, $body, $data);
-                    }
-                    if (! empty($oneSignalIds)) {
-                        (new \App\Services\OneSignalService)->sendToPlayerIds($oneSignalIds, $title, $body, $data);
-                    }
+                    ->pluck('token')->filter()->unique()->values()->all();
+                $title = 'Order Baru Menunggu Driver';
+                $totalText = number_format((float) $total, 0, ',', '.');
+                $body = $nomor.' • Total Rp '.$totalText;
+                $data = [
+                    'type' => 'kofood_order_offer',
+                    'order_id' => (string) $orderId,
+                    'number' => (string) $nomor,
+                    'pickup_lat' => $pickupLat,
+                    'pickup_lng' => $pickupLng,
+                    'dest_lat' => $destLat,
+                    'dest_lng' => $destLng,
+                    'dest_address' => (string) ($orderData['alamat_tujuan'] ?? ''),
+                    'merchant_name' => (string) ($merchantRow->nama_toko ?? ''),
+                ];
+                if (! empty($driverFcm)) {
+                    (new FcmService)->sendToTokens($driverFcm, $title, $body, $data);
+                }
+                if (! empty($driverOs)) {
+                    (new \App\Services\OneSignalService)->sendToPlayerIds($driverOs, $title, $body, $data);
                 }
             }
         } catch (\Throwable $e) {
-            // silently ignore notification errors
         }
         $payUrl = null;
         if (in_array($payMethod, ['pg_va', 'pg_qris', 'pg_checkout'])) {

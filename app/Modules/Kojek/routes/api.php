@@ -19,5 +19,10 @@ Route::prefix('v1/kojek')->middleware([ApiCors::class, TenantMiddleware::class])
         Route::post('orders/{id}/accept', [DriverApiController::class, 'acceptOrder']);
         Route::post('orders/{id}/reject', [DriverApiController::class, 'rejectOrder']);
         Route::post('orders/{id}/complete', [DriverApiController::class, 'completeOrder']);
+        Route::get('rides/available', [DriverApiController::class, 'availableRides']);
+        Route::get('rides/my/active', [DriverApiController::class, 'myActiveRide']);
+        Route::get('rides/{id}', [DriverApiController::class, 'rideDetail']);
+        Route::post('rides/{id}/accept', [DriverApiController::class, 'acceptRide']);
+        Route::post('rides/{id}/complete', [DriverApiController::class, 'completeRide']);
     });
 });

@@ -171,3 +171,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('permissions', [AccessPermissionController::class, 'store'])->name('permissions.store');
     Route::delete('permissions/{id}', [AccessPermissionController::class, 'destroy'])->name('permissions.destroy');
 });
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('kofood-offer-setting', [\App\Http\Controllers\Backoffice\KoFoodOfferSettingController::class, 'index'])->name('kofood-offer.setting');
+    Route::post('kofood-offer-setting', [\App\Http\Controllers\Backoffice\KoFoodOfferSettingController::class, 'update'])->name('kofood-offer.setting.update');
+});

@@ -88,6 +88,12 @@ Route::prefix('v1')->middleware([ApiCors::class])->group(function () {
         Route::get('orders/{id}/chat', [KoFoodController::class, 'listChat']);
         Route::post('orders/{id}/chat', [KoFoodController::class, 'sendChat']);
     });
+    Route::prefix('kojek')->middleware(['auth:sanctum', TenantMiddleware::class])->group(function () {
+        Route::get('ride/fare', [KoFoodController::class, 'rideFare']);
+        Route::post('ride/orders', [KoFoodController::class, 'createRideOrder']);
+        Route::get('ride/orders/my', [KoFoodController::class, 'myRideOrders']);
+        Route::get('ride/orders/{id}/tracking', [KoFoodController::class, 'rideTracking']);
+    });
 
     Route::prefix('seller')->middleware(['auth:sanctum', TenantMiddleware::class])->group(function () {
         Route::get('products', [SellerProductController::class, 'index']);

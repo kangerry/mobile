@@ -79,6 +79,9 @@
             @if(auth()->check() && (auth()->user()->hasRole('superadmin') || auth()->user()->can('gateway.setup')))
             <a class="{{ $isActive(['setup-gateway.*']) }}" href="{{ route('setup-gateway.index') }}"><i class="fa-solid fa-plug"></i><span>Payment Gateway</span></a>
             @endif
+            @if(auth()->check() && (auth()->user()->hasRole('superadmin') || auth()->user()->can('gateway.setup')))
+            <a class="{{ request()->is('kofood-offer-setting') ? 'active' : '' }}" href="{{ route('kofood-offer.setting') }}"><i class="fa-solid fa-bell"></i><span>KoFood Driver Offer</span></a>
+            @endif
             @if(auth()->check() && (auth()->user()->hasRole('superadmin') || auth()->user()->can('users.manage')))
             <a class="{{ $isActive(['access-roles.*']) }}" href="{{ route('access-roles.index') }}"><i class="fa-solid fa-user-shield"></i><span>Hak Akses (Role)</span></a>
             <a class="{{ $isActive(['permissions.index']) }}" href="{{ route('permissions.index') }}"><i class="fa-solid fa-key"></i><span>Permissions</span></a>
