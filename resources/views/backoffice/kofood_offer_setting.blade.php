@@ -1,4 +1,4 @@
-@extends('layouts.backoffice')
+@extends('layouts.app')
 @section('title', 'Pengaturan KoFood • Driver Offer')
 @section('content')
 <div class="container">
