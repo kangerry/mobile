@@ -159,6 +159,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('pesanan-makanan/{id}/complete', [PesananMakananController::class, 'completeDelivery'])->name('pesanan-makanan.complete');
     Route::get('driver/monitoring', [DriverController::class, 'monitoring'])->name('driver.monitoring');
     Route::get('driver/positions', [DriverController::class, 'positions'])->name('driver.positions');
+    Route::get('driver/monitoring/edit', function () {
+        return redirect()->route('driver.monitoring');
+    });
     Route::resource('driver', DriverController::class);
     Route::resource('pesanan-ojek', PesananOjekController::class);
     Route::resource('setup-gateway', SetupGatewayController::class);
