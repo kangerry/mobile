@@ -153,8 +153,11 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('merchant', MerchantController::class);
     Route::resource('produk', ProdukController::class);
     Route::resource('kategori-produk', \App\Http\Controllers\Backoffice\KategoriProdukController::class);
-    Route::resource('pesanan-makanan', PesananMakananController::class);
     Route::get('pesanan-makanan/delivery-board', [PesananMakananController::class, 'deliveryBoard'])->name('pesanan-makanan.delivery-board');
+    Route::get('pesanan-makanan/delivery-board/edit', function () {
+        return redirect()->route('pesanan-makanan.delivery-board');
+    });
+    Route::resource('pesanan-makanan', PesananMakananController::class);
     Route::post('pesanan-makanan/{id}/assign-driver', [PesananMakananController::class, 'assignDriver'])->name('pesanan-makanan.assign-driver');
     Route::post('pesanan-makanan/{id}/complete', [PesananMakananController::class, 'completeDelivery'])->name('pesanan-makanan.complete');
     Route::get('driver/monitoring', [DriverController::class, 'monitoring'])->name('driver.monitoring');

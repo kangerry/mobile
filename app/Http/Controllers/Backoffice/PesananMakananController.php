@@ -78,8 +78,14 @@ class PesananMakananController extends BaseController
 
     public function edit($id)
     {
+        if (! is_numeric($id)) {
+            return redirect()->route('pesanan-makanan.delivery-board');
+        }
         $user = Auth::user();
-        $row = DB::table('pesanan_makanan')->where('id', $id)->first();
+        $row = DB::table('pesanan_makanan')->where('id', (int) $id)->first();
+        if (! $row) {
+            return redirect()->route('pesanan-makanan.index')->with('error', 'Order tidak ditemukan');
+        }
         $kopQuery = DB::table('koperasi')->select('id', 'nama_koperasi')->orderBy('nama_koperasi');
         $anggotaQuery = DB::table('anggota')->select('id', 'nama_anggota')->orderBy('nama_anggota');
         $merchantQuery = DB::table('merchant')->select('id', 'nama_toko')->orderBy('nama_toko');
