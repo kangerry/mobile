@@ -412,9 +412,11 @@ class KoFoodController extends BaseController
         if (Schema::hasColumn('pesanan_makanan', 'catatan_alamat') && isset($v['catatan_alamat'])) {
             $orderData['catatan_alamat'] = (string) $v['catatan_alamat'];
         }
-        $expireMinutes = (int) env('KOFOOD_DRIVER_OFFER_EXPIRE_MINUTES', 3);
-        $orderData['offer_expires_at'] = now()->addMinutes($expireMinutes);
-        $orderData['offer_round'] = 1;
+        if (Schema::hasColumn('pesanan_makanan', 'offer_expires_at') && Schema::hasColumn('pesanan_makanan', 'offer_round')) {
+            $expireMinutes = (int) env('KOFOOD_DRIVER_OFFER_EXPIRE_MINUTES', 3);
+            $orderData['offer_expires_at'] = now()->addMinutes($expireMinutes);
+            $orderData['offer_round'] = 1;
+        }
         $orderId = DB::table('pesanan_makanan')->insertGetId($orderData);
         foreach ($v['items'] as $it) {
             $pid = (int) $it['product_id'];

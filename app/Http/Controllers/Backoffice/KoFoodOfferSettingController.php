@@ -18,7 +18,9 @@ class KoFoodOfferSettingController extends BaseController
 
     public function update(Request $request)
     {
-        $this->authorize('gateway.setup');
+        if (! auth()->check() || ! (auth()->user()->hasRole('superadmin') || auth()->user()->can('gateway.setup'))) {
+            return redirect()->route('dashboard')->with('error', 'Tidak diizinkan');
+        }
         $data = $request->validate([
             'expire_minutes' => ['required', 'integer', 'min:1', 'max:120'],
             'max_rounds' => ['required', 'integer', 'min:1', 'max:10'],
@@ -29,7 +31,11 @@ class KoFoodOfferSettingController extends BaseController
         $env = $this->putEnv($env, 'KOFOOD_DRIVER_OFFER_EXPIRE_MINUTES', (string) $data['expire_minutes']);
         $env = $this->putEnv($env, 'KOFOOD_DRIVER_OFFER_MAX_ROUNDS', (string) $data['max_rounds']);
         $env = $this->putEnv($env, 'KOFOOD_DRIVER_OFFER_TOP_N', (string) $data['top_n']);
-        file_put_contents($envPath, $env);
+        try {
+            file_put_contents($envPath, $env);
+        } catch (\Throwable $e) {
+            return redirect()->route('kofood-offer.setting')->with('error', 'Gagal menulis .env: '.$e->getMessage());
+        }
         try { Artisan::call('config:clear'); } catch (\Throwable $e) {}
         return redirect()->route('kofood-offer.setting')->with('success', 'Pengaturan berhasil disimpan');
     }
@@ -44,4 +50,3 @@ class KoFoodOfferSettingController extends BaseController
         return $env.$suffix;
     }
 }
-

@@ -123,6 +123,9 @@ class DriverApiController extends Controller
         try {
             $expireMinutes = (int) env('KOFOOD_DRIVER_OFFER_EXPIRE_MINUTES', 3);
             $maxRounds = (int) env('KOFOOD_DRIVER_OFFER_MAX_ROUNDS', 2);
+            if (! \Illuminate\Support\Facades\Schema::hasColumn('pesanan_makanan', 'offer_expires_at') || ! \Illuminate\Support\Facades\Schema::hasColumn('pesanan_makanan', 'offer_round')) {
+                throw new \RuntimeException('Offer columns not present');
+            }
             $expired = \Illuminate\Support\Facades\DB::table('pesanan_makanan')
                 ->join('merchant', 'pesanan_makanan.merchant_id', '=', 'merchant.id')
                 ->where('pesanan_makanan.koperasi_id', $kopId)

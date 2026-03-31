@@ -128,6 +128,7 @@ Route::prefix('anggota')->group(function () {
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::pattern('driver', '\d+');
 
     Route::post('active-koperasi', [ActiveKoperasiController::class, 'set'])->name('active-koperasi.set');
 
@@ -156,9 +157,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('pesanan-makanan/delivery-board', [PesananMakananController::class, 'deliveryBoard'])->name('pesanan-makanan.delivery-board');
     Route::post('pesanan-makanan/{id}/assign-driver', [PesananMakananController::class, 'assignDriver'])->name('pesanan-makanan.assign-driver');
     Route::post('pesanan-makanan/{id}/complete', [PesananMakananController::class, 'completeDelivery'])->name('pesanan-makanan.complete');
-    Route::resource('driver', DriverController::class);
     Route::get('driver/monitoring', [DriverController::class, 'monitoring'])->name('driver.monitoring');
     Route::get('driver/positions', [DriverController::class, 'positions'])->name('driver.positions');
+    Route::resource('driver', DriverController::class);
     Route::resource('pesanan-ojek', PesananOjekController::class);
     Route::resource('setup-gateway', SetupGatewayController::class);
     Route::resource('tarif-kojek', TarifKojekController::class);

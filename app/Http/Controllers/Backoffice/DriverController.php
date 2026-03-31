@@ -66,8 +66,14 @@ class DriverController extends BaseController
 
     public function edit($id)
     {
+        if (! is_numeric($id)) {
+            return redirect()->route('driver.monitoring');
+        }
         $user = Auth::user();
-        $row = DB::table('driver')->where('id', $id)->first();
+        $row = DB::table('driver')->where('id', (int) $id)->first();
+        if (! $row) {
+            return redirect()->route('driver.index')->with('error', 'Driver tidak ditemukan');
+        }
         $kopQuery = DB::table('koperasi')->select('id', 'nama_koperasi')->orderBy('nama_koperasi');
         if ($user && ! $user->hasRole('superadmin')) {
             $kopQuery->where('id', $user->koperasi_id);
